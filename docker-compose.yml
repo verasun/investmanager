@@ -1,0 +1,144 @@
+# ============================================
+# InvestManager - Docker Compose Configuration
+# ============================================
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # API Service
+  # ==========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: investmanager:latest
+    container_name: investmanager-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://investuser:investpass@db:5432/investmanager
+      - REDIS_URL=redis://redis:6379/0
+      - APP_ENV=${APP_ENV:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./data:/app/data
+    networks:
+      - investmanager-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================
+  # Task Orchestrator Service
+  # ==========================================
+  orchestrator:
+    image: investmanager:latest
+    container_name: investmanager-orchestrator
+    environment:
+      - DATABASE_URL=postgresql://investuser:investpass@db:5432/investmanager
+      - REDIS_URL=redis://redis:6379/0
+      - APP_ENV=${APP_ENV:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: python -m src.orchestrator.main --db-path /app/data/tasks.db --poll-interval 5
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./reports:/app/reports
+    networks:
+      - investmanager-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Web UI Service (Streamlit)
+  # ==========================================
+  web:
+    image: investmanager:latest
+    container_name: investmanager-web
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+      - APP_ENV=${APP_ENV:-development}
+    command: streamlit run web/app.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      - api
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - investmanager-network
+    restart: unless-stopped
+    profiles:
+      - web  # Optional service, use --profile web to enable
+
+  # ==========================================
+  # Database (PostgreSQL + TimescaleDB)
+  # ==========================================
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: investmanager-db
+    environment:
+      POSTGRES_DB: investmanager
+      POSTGRES_USER: investuser
+      POSTGRES_PASSWORD: investpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - investmanager-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U investuser -d investmanager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================
+  # Redis Cache
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: investmanager-redis
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - investmanager-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: investmanager-pgdata
+  redisdata:
+    name: investmanager-redisdata
+
+networks:
+  investmanager-network:
+    name: investmanager-network
+    driver: bridge

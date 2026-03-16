@@ -1,0 +1,67 @@
+# ============================================
+# InvestManager - Simplified Docker Build
+# For environments with limited network access
+# ============================================
+
+FROM python:3.11-bookworm
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Install Python dependencies directly (using latest compatible versions)
+RUN pip install --no-cache-dir \
+    pandas>=2.0 \
+    numpy>=1.24 \
+    akshare>=1.16 \
+    yfinance>=0.2 \
+    scikit-learn>=1.3 \
+    backtrader>=1.9 \
+    fastapi>=0.100 \
+    uvicorn>=0.23 \
+    streamlit>=1.25 \
+    sqlalchemy>=2.0 \
+    psycopg2-binary>=2.9 \
+    redis>=4.6 \
+    pydantic>=2.0 \
+    pydantic-settings>=2.0 \
+    python-dotenv>=1.0 \
+    loguru>=0.7 \
+    httpx>=0.25 \
+    tenacity>=8.2 \
+    aiofiles>=23.0 \
+    jinja2>=3.1 \
+    markdown>=3.4 \
+    pytest>=7.4 \
+    pytest-asyncio>=0.21 \
+    email-validator>=2.0
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Create directories
+RUN mkdir -p logs reports data && chown -R appuser:appuser logs reports data
+
+# Switch to non-root user
+USER appuser
+
+# Environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_ENV=production
+
+# Expose ports
+EXPOSE 8000 8501
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

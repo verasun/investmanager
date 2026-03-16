@@ -1,0 +1,78 @@
+# ============================================
+# InvestManager - Standalone Single Container
+# ============================================
+# Optimized for single-container deployment with:
+# - SQLite database (embedded)
+# - Local cache (no Redis dependency)
+# - OAuth2 email support
+# - Feishu integration
+# ============================================
+
+# Stage 1: Builder
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install poetry
+RUN pip install --no-cache-dir poetry==1.7.1
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Export dependencies to requirements.txt
+RUN poetry lock --no-interaction || true
+RUN poetry export --without-hashes --only main -f requirements.txt -o requirements.txt || true
+
+# Stage 2: Production
+FROM python:3.11-slim as production
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Copy requirements from builder and install
+COPY --from=builder /build/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Create necessary directories
+RUN mkdir -p data reports logs config && \
+    chown -R appuser:appuser data reports logs config
+
+# Switch to non-root user
+USER appuser
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_ENV=production \
+    DATABASE_BACKEND=sqlite \
+    SQLITE_DB_PATH=/app/data/investmanager.db \
+    LOCAL_CACHE_ENABLED=true
+
+# Expose ports
+# 8000: API
+# 8501: Web UI (optional)
+EXPOSE 8000 8501
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command
+# Starts API server, scheduler, and orchestrator
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

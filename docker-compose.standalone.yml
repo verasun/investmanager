@@ -1,0 +1,132 @@
+# ============================================
+# InvestManager - Standalone Single Container
+# ============================================
+# Usage:
+#   docker-compose -f docker-compose.standalone.yml up -d
+#
+# This configuration runs InvestManager as a single container
+# with embedded SQLite database and local cache (no external dependencies)
+#
+# Features:
+# - SQLite database (persistent via volume)
+# - Local in-memory cache (replaces Redis)
+# - Optional Feishu integration
+# - OAuth2 email authentication
+# ============================================
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # Main Application (All-in-One)
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.standalone
+    image: investmanager:standalone
+    container_name: investmanager
+    ports:
+      - "8000:8000"  # API
+      - "8501:8501"  # Web UI (optional)
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # Local Cache
+      - LOCAL_CACHE_ENABLED=true
+      - LOCAL_CACHE_MAX_SIZE=1000
+      - LOCAL_CACHE_TTL=300
+
+      # API Keys (from .env)
+      - TUSHARE_TOKEN=${TUSHARE_TOKEN:-}
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Email OAuth2
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-gmail}
+      - EMAIL_OAUTH2_CLIENT_ID=${EMAIL_OAUTH2_CLIENT_ID:-}
+      - EMAIL_OAUTH2_CLIENT_SECRET=${EMAIL_OAUTH2_CLIENT_SECRET:-}
+      - EMAIL_OAUTH2_REFRESH_TOKEN=${EMAIL_OAUTH2_REFRESH_TOKEN:-}
+      - EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}
+
+      # Feishu
+      - FEISHU_ENABLED=${FEISHU_ENABLED:-false}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - FEISHU_ENCRYPT_KEY=${FEISHU_ENCRYPT_KEY:-}
+      - FEISHU_VERIFICATION_TOKEN=${FEISHU_VERIFICATION_TOKEN:-}
+      - FEISHU_BITABLE_TOKEN=${FEISHU_BITABLE_TOKEN:-}
+      - FEISHU_FOLDER_TOKEN=${FEISHU_FOLDER_TOKEN:-}
+
+      # Scheduler
+      - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
+      - DAILY_ANALYSIS_TIME=${DAILY_ANALYSIS_TIME:-18:00}
+
+    volumes:
+      # Data persistence
+      - investmanager-data:/app/data
+      # Reports
+      - investmanager-reports:/app/reports
+      # Logs
+      - investmanager-logs:/app/logs
+      # Configuration (optional, for YAML configs)
+      - ./config:/app/config:ro
+
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==========================================
+  # Optional: Web UI (Streamlit)
+  # ==========================================
+  # Uncomment to enable web interface
+  # web:
+  #   image: investmanager:standalone
+  #   container_name: investmanager-web
+  #   ports:
+  #     - "8501:8501"
+  #   environment:
+  #     - API_URL=http://app:8000
+  #   command: streamlit run web/app.py --server.port 8501 --server.address 0.0.0.0
+  #   depends_on:
+  #     - app
+  #   profiles:
+  #     - web
+
+volumes:
+  investmanager-data:
+    name: investmanager-standalone-data
+  investmanager-reports:
+    name: investmanager-standalone-reports
+  investmanager-logs:
+    name: investmanager-standalone-logs
+
+networks:
+  investmanager-network:
+    name: investmanager-standalone-network
+    driver: bridge

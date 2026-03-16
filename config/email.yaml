@@ -1,0 +1,37 @@
+# Email Configuration
+# ===========================================
+# Configuration for email notifications and OAuth2 authentication
+
+email:
+  # Email provider: gmail, outlook, qq, custom
+  provider: gmail
+
+  # OAuth2 configuration (recommended)
+  # Get credentials from:
+  # - Gmail: https://console.cloud.google.com/apis/credentials
+  # - Outlook: https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
+  oauth2:
+    client_id: ""
+    client_secret: ""
+    token_url: ""  # Optional, uses default for provider
+    refresh_token: ""  # Obtained during OAuth2 flow
+
+  # Email addresses
+  from_address: ""
+  default_recipients:
+    - ""
+
+  # SMTP fallback (legacy, not recommended for production)
+  # OAuth2 is preferred for better security
+  smtp:
+    host: ""
+    port: 587
+    user: ""
+    password: ""
+
+# Example OAuth2 setup:
+#
+# 1. Create OAuth2 credentials in provider's developer console
+# 2. Run: python scripts/email_oauth2_setup.py
+# 3. Follow the prompts to authorize
+# 4. Copy the refresh_token to this file or .env

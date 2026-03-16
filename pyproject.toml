@@ -1,0 +1,83 @@
+[tool.poetry]
+name = "investmanager"
+version = "0.1.0"
+description = "Financial quantitative analysis system for A-shares, US stocks and derivatives"
+authors = ["InvestManager Team"]
+readme = "README.md"
+packages = [{include = "src"}, {include = "api"}, {include = "config"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.0"
+numpy = "^1.24"
+# Data acquisition
+akshare = "^1.16"
+yfinance = "^0.2"
+tushare = "^1.3"
+# Data analysis
+scikit-learn = "^1.3"
+# Backtest
+backtrader = "^1.9"
+# AI/LLM
+openai = "^1.0"
+anthropic = "^0.18"
+langchain = "^0.1"
+langchain-openai = "^0.1"
+# Web services
+fastapi = "^0.100"
+uvicorn = "^0.23"
+streamlit = "^1.25"
+# Database
+sqlalchemy = "^2.0"
+aiosqlite = "^0.19"  # Async SQLite support
+psycopg2-binary = "^2.9"
+redis = "^4.6"
+asyncpg = "^0.28"
+# Task scheduling
+apscheduler = "^3.10"
+# Report
+jinja2 = "^3.1"
+markdown = "^3.4"
+# Configuration
+pyyaml = "^6.0"  # YAML config support
+cryptography = "^42.0"  # Token encryption
+# Others
+pydantic = {extras = ["email"], version = "^2.0"}
+pydantic-settings = "^2.0"
+python-dotenv = "^1.0"
+loguru = "^0.7"
+httpx = "^0.25"
+tenacity = "^8.2"
+aiofiles = "^23.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4"
+pytest-asyncio = "^0.21"
+pytest-cov = "^4.1"
+black = "^23.7"
+ruff = "^0.0"
+mypy = "^1.4"
+pre-commit = "^3.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

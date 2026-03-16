@@ -1,0 +1,46 @@
+# Feishu (Lark) Configuration
+# ===========================================
+# Configuration for Feishu integration
+
+feishu:
+  # Enable/disable Feishu integration
+  enabled: false
+
+  # App credentials (from Feishu Open Platform)
+  # https://open.feishu.cn/app
+  app_id: ""
+  app_secret: ""
+
+  # Event subscription security
+  encrypt_key: ""  # For encrypting event data
+  verification_token: ""  # For verifying webhook requests
+
+  # Multi-dimensional table (Bitable) integration
+  # Used for data-driven triggers and storage
+  bitable:
+    app_token: ""  # Bitable app token from URL
+    table_id: ""  # Specific table ID (optional)
+
+  # Document storage
+  # Where to store generated reports
+  document:
+    folder_token: ""  # Folder token from URL
+
+# Webhook URL for event subscription:
+# https://your-domain.com/api/feishu/webhook
+
+# Required permissions:
+# - im:message (receive and send messages)
+# - docx:document (create documents)
+# - bitable:app (read/write bitable)
+# - drive:drive (upload files)
+
+# Example setup:
+#
+# 1. Create app at https://open.feishu.cn/app
+# 2. Configure permissions
+# 3. Enable event subscription
+# 4. Set webhook URL to: https://your-domain/api/feishu/webhook
+# 5. Subscribe to events:
+#    - im.message.receive_v1 (receive messages)
+#    - bitable.record.changed_v1 (bitable changes)

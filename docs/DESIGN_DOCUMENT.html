@@ -1,0 +1,1929 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InvestManager - 金融量化分析系统设计文档</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            font-size: 1.3em;
+            color: #a0a0a0;
+        }
+
+        .header .version {
+            margin-top: 20px;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            display: inline-block;
+            font-size: 0.9em;
+        }
+
+        /* Navigation */
+        .nav {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            border-bottom: 1px solid #e9ecef;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .nav a {
+            text-decoration: none;
+            color: #495057;
+            padding: 10px 20px;
+            border-radius: 25px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .nav a:hover {
+            background: #667eea;
+            color: #fff;
+        }
+
+        /* Content */
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 60px;
+        }
+
+        .section-title {
+            font-size: 2em;
+            color: #1a1a2e;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .section-title .icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 1.2em;
+        }
+
+        .subsection {
+            margin-bottom: 30px;
+        }
+
+        .subsection-title {
+            font-size: 1.4em;
+            color: #16213e;
+            margin-bottom: 15px;
+            padding-left: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        /* Cards */
+        .card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        /* Grid */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Code blocks */
+        pre {
+            background: #1a1a2e;
+            color: #a0a0a0;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        code {
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: #667eea;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        /* Tags */
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            margin: 2px;
+        }
+
+        .tag-blue { background: #e3f2fd; color: #1976d2; }
+        .tag-green { background: #e8f5e9; color: #388e3c; }
+        .tag-purple { background: #f3e5f5; color: #7b1fa2; }
+        .tag-orange { background: #fff3e0; color: #f57c00; }
+        .tag-red { background: #ffebee; color: #d32f2f; }
+
+        /* Architecture Diagram */
+        .arch-diagram {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .arch-layer {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .arch-layer-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .arch-components {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .arch-component {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        /* Highlight boxes */
+        .highlight-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .highlight-box h4 {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #667eea;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 25px;
+            padding-left: 25px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -24px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            background: #667eea;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 3px #667eea;
+        }
+
+        /* Footer */
+        .footer {
+            background: #1a1a2e;
+            color: #a0a0a0;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .nav ul {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+            }
+
+            .nav {
+                position: static;
+            }
+        }
+
+        /* Feature icons */
+        .feature-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .feature-card {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .feature-card h4 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        /* API endpoint styling */
+        .endpoint {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .method {
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 0.85em;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .method-get { background: #e3f2fd; color: #1976d2; }
+        .method-post { background: #e8f5e9; color: #388e3c; }
+        .method-put { background: #fff3e0; color: #f57c00; }
+        .method-delete { background: #ffebee; color: #d32f2f; }
+
+        .path {
+            font-family: 'Consolas', monospace;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>InvestManager</h1>
+            <p class="subtitle">金融量化数据分析系统</p>
+            <div class="version">Version 1.0.0 | 2026-03-15</div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav">
+            <ul>
+                <li><a href="#overview">项目概述</a></li>
+                <li><a href="#requirements">需求说明</a></li>
+                <li><a href="#architecture">架构设计</a></li>
+                <li><a href="#tech-stack">技术选型</a></li>
+                <li><a href="#modules">模块设计</a></li>
+                <li><a href="#api">API文档</a></li>
+                <li><a href="#manual">使用手册</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Section 1: Overview -->
+            <section id="overview" class="section">
+                <h2 class="section-title">
+                    <span class="icon">1</span>
+                    项目概述
+                </h2>
+
+                <div class="highlight-box">
+                    <h4>项目简介</h4>
+                    <p>InvestManager 是一个功能完整的金融量化分析系统，支持A股和美股市场数据获取、技术分析、策略回测、风险管理以及自动化报告生成。系统采用前后端分离架构，提供RESTful API服务和交互式Web仪表板。</p>
+                </div>
+
+                <div class="grid-4">
+                    <div class="card feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h4>数据获取</h4>
+                        <p>支持A股、美股、衍生品数据</p>
+                    </div>
+                    <div class="card feature-card">
+                        <div class="feature-icon">📈</div>
+                        <h4>技术分析</h4>
+                        <p>30+技术指标与形态识别</p>
+                    </div>
+                    <div class="card feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <h4>策略回测</h4>
+                        <p>完整回测引擎与绩效评估</p>
+                    </div>
+                    <div class="card feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <h4>风险管理</h4>
+                        <p>仓位管理与风险预警</p>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">核心功能</h3>
+                    <div class="grid-2">
+                        <div class="card">
+                            <h4>数据采集模块</h4>
+                            <ul>
+                                <li>美股数据：Yahoo Finance API</li>
+                                <li>A股数据：Akshare 开源库</li>
+                                <li>数据清洗与标准化处理</li>
+                                <li>特征工程与技术指标计算</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>分析引擎</h4>
+                            <ul>
+                                <li>技术指标：MA、EMA、RSI、MACD、KDJ等</li>
+                                <li>形态识别：19种蜡烛图形态</li>
+                                <li>信号生成：买入/卖出/持有信号</li>
+                                <li>趋势分析与支撑阻力位</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>回测系统</h4>
+                            <ul>
+                                <li>Backtrader风格策略框架</li>
+                                <li>多策略对比分析</li>
+                                <li>完整绩效指标计算</li>
+                                <li>交易记录与组合价值追踪</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>风险控制</h4>
+                            <ul>
+                                <li>多种仓位管理算法</li>
+                                <li>风险敞口监控</li>
+                                <li>压力测试</li>
+                                <li>实时预警通知</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Requirements -->
+            <section id="requirements" class="section">
+                <h2 class="section-title">
+                    <span class="icon">2</span>
+                    需求说明
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">2.1 业务需求</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>需求编号</th>
+                                <th>需求描述</th>
+                                <th>优先级</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>BR-001</td>
+                                <td>系统需支持获取A股和美股市场实时行情数据</td>
+                                <td><span class="tag tag-red">高</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-002</td>
+                                <td>系统需提供技术分析功能，支持常用技术指标计算</td>
+                                <td><span class="tag tag-red">高</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-003</td>
+                                <td>系统需支持量化策略回测，评估策略有效性</td>
+                                <td><span class="tag tag-red">高</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-004</td>
+                                <td>系统需提供风险管理功能，包括仓位控制和预警</td>
+                                <td><span class="tag tag-orange">中</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-005</td>
+                                <td>系统需自动生成分析报告，支持多种格式导出</td>
+                                <td><span class="tag tag-orange">中</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-006</td>
+                                <td>系统需提供Web界面，支持交互式数据分析</td>
+                                <td><span class="tag tag-orange">中</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                            <tr>
+                                <td>BR-007</td>
+                                <td>系统需提供RESTful API，支持第三方系统集成</td>
+                                <td><span class="tag tag-orange">中</span></td>
+                                <td><span class="tag tag-green">已完成</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">2.2 功能需求</h3>
+
+                    <div class="card">
+                        <h4>数据管理功能</h4>
+                        <ul>
+                            <li><strong>FR-DM-001</strong>: 支持按股票代码获取历史OHLCV数据</li>
+                            <li><strong>FR-DM-002</strong>: 支持获取实时行情数据</li>
+                            <li><strong>FR-DM-003</strong>: 支持数据清洗和缺失值处理</li>
+                            <li><strong>FR-DM-004</strong>: 支持数据标准化和归一化</li>
+                            <li><strong>FR-DM-005</strong>: 支持技术特征工程</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>分析功能</h4>
+                        <ul>
+                            <li><strong>FR-AN-001</strong>: 支持移动平均线计算（SMA、EMA）</li>
+                            <li><strong>FR-AN-002</strong>: 支持动量指标计算（RSI、MACD、KDJ）</li>
+                            <li><strong>FR-AN-003</strong>: 支持波动率指标计算（ATR、布林带）</li>
+                            <li><strong>FR-AN-004</strong>: 支持蜡烛图形态识别</li>
+                            <li><strong>FR-AN-005</strong>: 支持交易信号生成</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>回测功能</h4>
+                        <ul>
+                            <li><strong>FR-BT-001</strong>: 支持定义交易策略</li>
+                            <li><strong>FR-BT-002</strong>: 支持模拟交易执行</li>
+                            <li><strong>FR-BT-003</strong>: 支持绩效指标计算</li>
+                            <li><strong>FR-BT-004</strong>: 支持多策略对比</li>
+                            <li><strong>FR-BT-005</strong>: 支持回测报告生成</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>风险管理功能</h4>
+                        <ul>
+                            <li><strong>FR-RM-001</strong>: 支持多种仓位管理算法</li>
+                            <li><strong>FR-RM-002</strong>: 支持投资组合约束管理</li>
+                            <li><strong>FR-RM-003</strong>: 支持风险敞口计算</li>
+                            <li><strong>FR-RM-004</strong>: 支持压力测试</li>
+                            <li><strong>FR-RM-005</strong>: 支持风险预警通知</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">2.3 非功能需求</h3>
+                    <div class="grid-2">
+                        <div class="card">
+                            <h4>性能需求</h4>
+                            <ul>
+                                <li>API响应时间 < 500ms</li>
+                                <li>支持并发请求 > 100</li>
+                                <li>数据缓存命中率 > 80%</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>可用性需求</h4>
+                            <ul>
+                                <li>系统可用性 > 99%</li>
+                                <li>错误恢复时间 < 5min</li>
+                                <li>数据备份周期 = 1天</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>安全性需求</h4>
+                            <ul>
+                                <li>API访问需认证授权</li>
+                                <li>敏感数据加密存储</li>
+                                <li>操作日志完整记录</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>可扩展性需求</h4>
+                            <ul>
+                                <li>模块化设计，易于扩展</li>
+                                <li>支持插件式策略添加</li>
+                                <li>支持多数据源接入</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 3: Architecture -->
+            <section id="architecture" class="section">
+                <h2 class="section-title">
+                    <span class="icon">3</span>
+                    架构设计
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">3.1 系统架构图</h3>
+                    <div class="arch-diagram">
+                        <div class="arch-layer">
+                            <div class="arch-layer-title">表现层 (Presentation Layer)</div>
+                            <div class="arch-components">
+                                <span class="arch-component">Streamlit Dashboard</span>
+                                <span class="arch-component">REST API</span>
+                                <span class="arch-component">Swagger UI</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 2em; color: #667eea;">↓</div>
+                        <div class="arch-layer">
+                            <div class="arch-layer-title">服务层 (Service Layer)</div>
+                            <div class="arch-components">
+                                <span class="arch-component">Market Service</span>
+                                <span class="arch-component">Analysis Service</span>
+                                <span class="arch-component">Backtest Service</span>
+                                <span class="arch-component">Report Service</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 2em; color: #667eea;">↓</div>
+                        <div class="arch-layer">
+                            <div class="arch-layer-title">业务逻辑层 (Business Logic Layer)</div>
+                            <div class="arch-components">
+                                <span class="arch-component">Strategy Engine</span>
+                                <span class="arch-component">Risk Manager</span>
+                                <span class="arch-component">Signal Generator</span>
+                                <span class="arch-component">Pattern Detector</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 2em; color: #667eea;">↓</div>
+                        <div class="arch-layer">
+                            <div class="arch-layer-title">数据访问层 (Data Access Layer)</div>
+                            <div class="arch-components">
+                                <span class="arch-component">YFinance Source</span>
+                                <span class="arch-component">Akshare Source</span>
+                                <span class="arch-component">Data Repository</span>
+                                <span class="arch-component">Cache Manager</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 2em; color: #667eea;">↓</div>
+                        <div class="arch-layer">
+                            <div class="arch-layer-title">基础设施层 (Infrastructure Layer)</div>
+                            <div class="arch-components">
+                                <span class="arch-component">PostgreSQL</span>
+                                <span class="arch-component">Redis</span>
+                                <span class="arch-component">File Storage</span>
+                                <span class="arch-component">Message Queue</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">3.2 模块依赖关系</h3>
+                    <pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                        web / api                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │ Streamlit   │  │  FastAPI    │  │   Routes    │              │
+│  │ Dashboard   │  │  Service    │  │  & Schemas  │              │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
+└─────────┼────────────────┼────────────────┼─────────────────────┘
+          │                │                │
+          ▼                ▼                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         src (Core)                               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
+│  │ backtest │ │strategies│ │   risk   │ │  report  │           │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘           │
+│       │            │            │            │                  │
+│  ┌────┴────────────┴────────────┴────────────┴────┐            │
+│  │                 analysis                        │            │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ │            │
+│  │  │ technical  │ │fundamental │ │  sentiment │ │            │
+│  │  └────────────┘ └────────────┘ └────────────┘ │            │
+│  └────────────────────────┬───────────────────────┘            │
+│                           │                                     │
+│  ┌────────────────────────┴───────────────────────┐            │
+│  │                   data                          │            │
+│  │  ┌─────────┐ ┌──────────┐ ┌──────────────┐    │            │
+│  │  │ sources │ │repository│ │  processors  │    │            │
+│  │  └─────────┘ └──────────┘ └──────────────┘    │            │
+│  └────────────────────────────────────────────────┘            │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       config                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   settings   │  │    logging   │  │    env      │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+└─────────────────────────────────────────────────────────────────┘</code></pre>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">3.3 数据流设计</h3>
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <h4>数据采集阶段</h4>
+                            <p>外部API → DataSource → DataRepository → 数据清洗 → 存储</p>
+                        </div>
+                        <div class="timeline-item">
+                            <h4>数据分析阶段</h4>
+                            <p>存储数据 → TechnicalIndicators → SignalGenerator → PatternDetector → 分析结果</p>
+                        </div>
+                        <div class="timeline-item">
+                            <h4>策略执行阶段</h4>
+                            <p>策略定义 → BacktestEngine → Portfolio → Execution → PerformanceMetrics</p>
+                        </div>
+                        <div class="timeline-item">
+                            <h4>报告生成阶段</h4>
+                            <p>分析结果 → ReportGenerator → Jinja2模板 → ReportExporter → 输出文件</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 4: Tech Stack -->
+            <section id="tech-stack" class="section">
+                <h2 class="section-title">
+                    <span class="icon">4</span>
+                    技术选型
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">4.1 核心技术栈</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>类别</th>
+                                <th>技术</th>
+                                <th>版本</th>
+                                <th>选型理由</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>编程语言</td>
+                                <td>Python</td>
+                                <td>3.11+</td>
+                                <td>丰富的量化生态，简洁易维护</td>
+                            </tr>
+                            <tr>
+                                <td>包管理</td>
+                                <td>Poetry</td>
+                                <td>1.7+</td>
+                                <td>现代化依赖管理，锁定版本</td>
+                            </tr>
+                            <tr>
+                                <td>Web框架</td>
+                                <td>FastAPI</td>
+                                <td>0.100+</td>
+                                <td>高性能异步框架，自动API文档</td>
+                            </tr>
+                            <tr>
+                                <td>仪表板</td>
+                                <td>Streamlit</td>
+                                <td>1.30+</td>
+                                <td>快速构建数据应用，无需前端开发</td>
+                            </tr>
+                            <tr>
+                                <td>数据处理</td>
+                                <td>Pandas / NumPy</td>
+                                <td>2.0+</td>
+                                <td>行业标准数据处理库</td>
+                            </tr>
+                            <tr>
+                                <td>技术分析</td>
+                                <td>TA-Lib</td>
+                                <td>0.4+</td>
+                                <td>专业的技术分析函数库</td>
+                            </tr>
+                            <tr>
+                                <td>数据源-美股</td>
+                                <td>YFinance</td>
+                                <td>0.2+</td>
+                                <td>免费的Yahoo Finance数据接口</td>
+                            </tr>
+                            <tr>
+                                <td>数据源-A股</td>
+                                <td>Akshare</td>
+                                <td>1.10+</td>
+                                <td>开源A股数据接口</td>
+                            </tr>
+                            <tr>
+                                <td>数据库</td>
+                                <td>PostgreSQL / TimescaleDB</td>
+                                <td>15+</td>
+                                <td>时序数据优化，支持复杂查询</td>
+                            </tr>
+                            <tr>
+                                <td>缓存</td>
+                                <td>Redis</td>
+                                <td>7.0+</td>
+                                <td>高性能内存缓存</td>
+                            </tr>
+                            <tr>
+                                <td>任务调度</td>
+                                <td>APScheduler</td>
+                                <td>3.10+</td>
+                                <td>灵活的定时任务调度</td>
+                            </tr>
+                            <tr>
+                                <td>模板引擎</td>
+                                <td>Jinja2</td>
+                                <td>3.1+</td>
+                                <td>强大的模板渲染能力</td>
+                            </tr>
+                            <tr>
+                                <td>日志</td>
+                                <td>Loguru</td>
+                                <td>0.7+</td>
+                                <td>简洁的日志记录库</td>
+                            </tr>
+                            <tr>
+                                <td>配置管理</td>
+                                <td>Pydantic Settings</td>
+                                <td>2.0+</td>
+                                <td>类型安全的配置管理</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">4.2 项目结构</h3>
+                    <pre><code>investmanager/
+├── config/                    # 配置模块
+│   ├── __init__.py
+│   ├── settings.py           # 系统配置
+│   └── logging_config.py     # 日志配置
+│
+├── src/                      # 核心源码
+│   ├── data/                 # 数据模块
+│   │   ├── sources/          # 数据源
+│   │   │   ├── base.py       # 数据源基类
+│   │   │   ├── yfinance_source.py  # 美股数据源
+│   │   │   └── akshare_source.py   # A股数据源
+│   │   ├── processors/       # 数据处理器
+│   │   │   ├── cleaner.py    # 数据清洗
+│   │   │   ├── normalizer.py # 数据标准化
+│   │   │   └── feature_engineer.py # 特征工程
+│   │   ├── models.py         # 数据模型
+│   │   └── repository.py     # 数据仓库
+│   │
+│   ├── analysis/             # 分析模块
+│   │   ├── technical/        # 技术分析
+│   │   │   ├── indicators.py # 技术指标
+│   │   │   ├── signals.py    # 信号生成
+│   │   │   └── patterns.py   # 形态识别
+│   │   ├── fundamental/      # 基本面分析
+│   │   └── sentiment/        # 情绪分析
+│   │
+│   ├── strategies/           # 策略模块
+│   │   ├── base.py           # 策略基类
+│   │   ├── momentum.py       # 动量策略
+│   │   ├── mean_reversion.py # 均值回归策略
+│   │   ├── trend_following.py # 趋势跟踪策略
+│   │   └── portfolio_strategy.py # 组合策略
+│   │
+│   ├── backtest/             # 回测模块
+│   │   ├── strategy.py       # 策略抽象
+│   │   ├── portfolio.py      # 组合管理
+│   │   ├── execution.py      # 订单执行
+│   │   ├── metrics.py        # 绩效指标
+│   │   └── engine.py         # 回测引擎
+│   │
+│   ├── risk/                 # 风险模块
+│   │   ├── position.py       # 仓位管理
+│   │   ├── exposure.py       # 风险敞口
+│   │   └── alerts.py         # 预警系统
+│   │
+│   ├── report/               # 报告模块
+│   │   ├── generator.py      # 报告生成
+│   │   ├── export.py         # 报告导出
+│   │   └── templates/        # 报告模板
+│   │
+│   └── scheduler/            # 调度模块
+│       ├── jobs.py           # 任务调度
+│       └── notification.py   # 通知服务
+│
+├── api/                      # API服务
+│   ├── main.py               # FastAPI应用
+│   ├── dependencies.py       # 依赖注入
+│   ├── routes/               # 路由
+│   │   ├── market.py         # 市场数据路由
+│   │   ├── analysis.py       # 分析路由
+│   │   ├── backtest.py       # 回测路由
+│   │   └── report.py         # 报告路由
+│   └── schemas/              # 数据模型
+│       ├── requests.py       # 请求模型
+│       └── responses.py      # 响应模型
+│
+├── web/                      # Web仪表板
+│   ├── app.py                # Streamlit应用
+│   ├── components/           # UI组件
+│   │   └── charts.py         # 图表组件
+│   └── pages/                # 页面
+│       ├── market_overview.py
+│       ├── data_analysis.py
+│       ├── backtest.py
+│       ├── daily_report.py
+│       └── settings_page.py
+│
+├── tests/                    # 测试模块
+├── docs/                     # 文档
+├── pyproject.toml           # 项目配置
+└── README.md                # 项目说明</code></pre>
+                </div>
+            </section>
+
+            <!-- Section 5: Modules -->
+            <section id="modules" class="section">
+                <h2 class="section-title">
+                    <span class="icon">5</span>
+                    模块详细设计
+                </h2>
+
+                <!-- Data Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.1 数据模块 (src/data)</h3>
+
+                    <div class="card">
+                        <h4>5.1.1 数据源基类 (DataSource)</h4>
+                        <pre><code>class DataSource(ABC):
+    """数据源抽象基类"""
+
+    @abstractmethod
+    async def fetch_ohlcv(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> pd.DataFrame:
+        """获取OHLCV数据"""
+        pass
+
+    @abstractmethod
+    async def fetch_latest(self, symbol: str) -> pd.DataFrame:
+        """获取最新数据"""
+        pass
+
+    @abstractmethod
+    async def get_stock_info(self, symbol: str) -> dict:
+        """获取股票信息"""
+        pass</code></pre>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.1.2 美股数据源 (YFinanceSource)</h4>
+                        <p>基于Yahoo Finance API实现，支持：</p>
+                        <ul>
+                            <li>历史OHLCV数据获取</li>
+                            <li>实时行情数据</li>
+                            <li>股票基本信息</li>
+                            <li>分时数据</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.1.3 A股数据源 (AkshareSource)</h4>
+                        <p>基于Akshare开源库实现，支持：</p>
+                        <ul>
+                            <li>A股历史数据</li>
+                            <li>实时行情</li>
+                            <li>财务数据</li>
+                            <li>指数数据</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.1.4 数据处理器</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>处理器</th>
+                                    <th>功能</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>DataCleaner</td>
+                                    <td>缺失值处理、异常值检测、重复数据清理</td>
+                                </tr>
+                                <tr>
+                                    <td>DataNormalizer</td>
+                                    <td>数据标准化、归一化、对数变换</td>
+                                </tr>
+                                <tr>
+                                    <td>FeatureEngineer</td>
+                                    <td>技术特征计算、衍生指标生成</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Analysis Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.2 分析模块 (src/analysis)</h3>
+
+                    <div class="card">
+                        <h4>5.2.1 技术指标 (TechnicalIndicators)</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>类别</th>
+                                    <th>指标</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td rowspan="4">趋势指标</td>
+                                    <td>SMA / EMA</td>
+                                    <td>简单/指数移动平均</td>
+                                </tr>
+                                <tr>
+                                    <td>MACD</td>
+                                    <td>指数平滑异同移动平均</td>
+                                </tr>
+                                <tr>
+                                    <td>ADX</td>
+                                    <td>平均趋向指数</td>
+                                </tr>
+                                <tr>
+                                    <td>Ichimoku</td>
+                                    <td>一目均衡表</td>
+                                </tr>
+                                <tr>
+                                    <td rowspan="3">动量指标</td>
+                                    <td>RSI</td>
+                                    <td>相对强弱指数</td>
+                                </tr>
+                                <tr>
+                                    <td>KDJ</td>
+                                    <td>随机指标</td>
+                                </tr>
+                                <tr>
+                                    <td>CCI</td>
+                                    <td>商品通道指数</td>
+                                </tr>
+                                <tr>
+                                    <td rowspan="3">波动率指标</td>
+                                    <td>ATR</td>
+                                    <td>平均真实波幅</td>
+                                </tr>
+                                <tr>
+                                    <td>Bollinger Bands</td>
+                                    <td>布林带</td>
+                                </tr>
+                                <tr>
+                                    <td>Keltner Channel</td>
+                                    <td>肯特纳通道</td>
+                                </tr>
+                                <tr>
+                                    <td rowspan="2">成交量指标</td>
+                                    <td>OBV</td>
+                                    <td>能量潮</td>
+                                </tr>
+                                <tr>
+                                    <td>Volume Rate</td>
+                                    <td>量比</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.2.2 形态识别 (PatternRecognition)</h4>
+                        <div class="grid-3">
+                            <div>
+                                <h5>单蜡烛形态</h5>
+                                <ul>
+                                    <li>Doji (十字星)</li>
+                                    <li>Hammer (锤子线)</li>
+                                    <li>Hanging Man (上吊线)</li>
+                                    <li>Inverted Hammer (倒锤线)</li>
+                                    <li>Shooting Star (流星线)</li>
+                                    <li>Marubozu (光头光脚)</li>
+                                    <li>Spinning Top (纺锤线)</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h5>双蜡烛形态</h5>
+                                <ul>
+                                    <li>Bullish Engulfing (看涨吞没)</li>
+                                    <li>Bearish Engulfing (看跌吞没)</li>
+                                    <li>Piercing Line (刺透线)</li>
+                                    <li>Dark Cloud Cover (乌云盖顶)</li>
+                                    <li>Tweezer Top (镊子顶)</li>
+                                    <li>Tweezer Bottom (镊子底)</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h5>三蜡烛形态</h5>
+                                <ul>
+                                    <li>Morning Star (启明星)</li>
+                                    <li>Evening Star (黄昏星)</li>
+                                    <li>Three White Soldiers (三白兵)</li>
+                                    <li>Three Black Crows (三只乌鸦)</li>
+                                    <li>Three Inside Up (三内部上涨)</li>
+                                    <li>Three Inside Down (三内部下跌)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.2.3 信号生成 (SignalGenerator)</h4>
+                        <pre><code>class Signal(Enum):
+    """交易信号"""
+    BUY = "BUY"      # 买入
+    SELL = "SELL"    # 卖出
+    HOLD = "HOLD"    # 持有
+
+class SignalGenerator:
+    """信号生成器"""
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """生成交易信号"""
+        # 基于多种指标综合判断
+        # 1. 趋势信号
+        # 2. 动量信号
+        # 3. 成交量信号
+        # 4. 形态信号
+        pass</code></pre>
+                    </div>
+                </div>
+
+                <!-- Strategy Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.3 策略模块 (src/strategies)</h3>
+
+                    <div class="card">
+                        <h4>5.3.1 策略基类</h4>
+                        <pre><code>class BaseStrategy:
+    """策略基类"""
+
+    def __init__(self):
+        self.params = {}
+
+    @abstractmethod
+    def generate_signals(self, data: pd.DataFrame) -> pd.Series:
+        """生成交易信号"""
+        pass
+
+    def set_params(self, **kwargs) -> None:
+        """设置策略参数"""
+        self.params.update(kwargs)
+
+    def get_params(self) -> dict:
+        """获取策略参数"""
+        return self.params.copy()</code></pre>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <h4>5.3.2 动量策略 (MomentumStrategy)</h4>
+                            <p>基于价格动量的趋势跟踪策略</p>
+                            <ul>
+                                <li>价格动量计算</li>
+                                <li>RSI超买超卖</li>
+                                <li>MACD交叉信号</li>
+                            </ul>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li>lookback_period: 回看周期</li>
+                                <li>momentum_threshold: 动量阈值</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>5.3.3 均值回归策略 (MeanReversionStrategy)</h4>
+                            <p>基于价格回归均值的反转策略</p>
+                            <ul>
+                                <li>布林带通道突破</li>
+                                <li>RSI极值反转</li>
+                                <li>Z-Score计算</li>
+                            </ul>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li>window: 均值计算窗口</li>
+                                <li>std_dev: 标准差倍数</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>5.3.4 趋势跟踪策略 (TrendFollowingStrategy)</h4>
+                            <p>基于趋势识别的跟踪策略</p>
+                            <ul>
+                                <li>移动平均线交叉</li>
+                                <li>突破信号</li>
+                                <li>ADX趋势强度</li>
+                            </ul>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li>fast_period: 快线周期</li>
+                                <li>slow_period: 慢线周期</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>5.3.5 组合策略 (PortfolioStrategy)</h4>
+                            <p>多资产组合管理策略</p>
+                            <ul>
+                                <li>风险平价</li>
+                                <li>行业轮动</li>
+                                <li>动态配置</li>
+                            </ul>
+                            <p><strong>参数：</strong></p>
+                            <ul>
+                                <li>rebalance_freq: 再平衡频率</li>
+                                <li>target_vol: 目标波动率</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backtest Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.4 回测模块 (src/backtest)</h3>
+
+                    <div class="card">
+                        <h4>5.4.1 回测引擎架构</h4>
+                        <pre><code>class BacktestEngine:
+    """回测引擎"""
+
+    def __init__(self, config: BacktestConfig):
+        self.config = config
+        self.portfolio = Portfolio(config.initial_cash)
+        self.execution = ExecutionEngine(config)
+
+    def run(
+        self,
+        strategy: Strategy,
+        data: pd.DataFrame,
+        symbol: str
+    ) -> BacktestResult:
+        """
+        运行回测
+
+        1. 遍历历史数据
+        2. 生成交易信号
+        3. 执行订单
+        4. 更新组合
+        5. 计算绩效
+        """
+        pass
+
+    def run_multiple(
+        self,
+        strategies: dict[str, Strategy],
+        data: pd.DataFrame,
+        symbol: str
+    ) -> dict[str, BacktestResult]:
+        """运行多策略对比"""
+        pass</code></pre>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.4.2 绩效指标 (PerformanceMetrics)</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>指标</th>
+                                    <th>公式</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>总收益率</td>
+                                    <td>(期末值 - 期初值) / 期初值</td>
+                                    <td>策略整体收益</td>
+                                </tr>
+                                <tr>
+                                    <td>年化收益</td>
+                                    <td>(1 + 总收益率)^(252/n) - 1</td>
+                                    <td>年化后的收益率</td>
+                                </tr>
+                                <tr>
+                                    <td>夏普比率</td>
+                                    <td>(年化收益 - 无风险利率) / 年化波动率</td>
+                                    <td>风险调整后收益</td>
+                                </tr>
+                                <tr>
+                                    <td>索提诺比率</td>
+                                    <td>(年化收益 - 无风险利率) / 下行波动率</td>
+                                    <td>下行风险调整收益</td>
+                                </tr>
+                                <tr>
+                                    <td>最大回撤</td>
+                                    <td>max((峰值 - 当前值) / 峰值)</td>
+                                    <td>最大亏损幅度</td>
+                                </tr>
+                                <tr>
+                                    <td>胜率</td>
+                                    <td>盈利交易数 / 总交易数</td>
+                                    <td>交易胜出比例</td>
+                                </tr>
+                                <tr>
+                                    <td>盈亏比</td>
+                                    <td>平均盈利 / 平均亏损</td>
+                                    <td>单笔盈亏对比</td>
+                                </tr>
+                                <tr>
+                                    <td>盈利因子</td>
+                                    <td>总盈利 / 总亏损</td>
+                                    <td>整体盈亏比</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.4.3 组合管理 (Portfolio)</h4>
+                        <pre><code>@dataclass
+class Portfolio:
+    """投资组合"""
+
+    cash: float                    # 现金
+    holdings: dict[str, int]       # 持仓 {symbol: quantity}
+    trades: list[Trade]            # 交易记录
+    portfolio_value: float         # 组合价值
+
+    def update(self, symbol: str, quantity: int, price: float) -> None:
+        """更新持仓"""
+        pass
+
+    def get_position(self, symbol: str) -> int:
+        """获取持仓数量"""
+        pass
+
+    def get_total_value(self, prices: dict[str, float]) -> float:
+        """计算总价值"""
+        pass</code></pre>
+                    </div>
+                </div>
+
+                <!-- Risk Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.5 风险模块 (src/risk)</h3>
+
+                    <div class="card">
+                        <h4>5.5.1 仓位管理 (PositionSizer)</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>算法</th>
+                                    <th>说明</th>
+                                    <th>公式</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>FixedSizer</td>
+                                    <td>固定金额</td>
+                                    <td>size = fixed_amount / price</td>
+                                </tr>
+                                <tr>
+                                    <td>PercentageSizer</td>
+                                    <td>固定比例</td>
+                                    <td>size = portfolio_value * pct / price</td>
+                                </tr>
+                                <tr>
+                                    <td>VolatilitySizer</td>
+                                    <td>波动率调整</td>
+                                    <td>size = portfolio_value * (target_vol / vol) / price</td>
+                                </tr>
+                                <tr>
+                                    <td>KellySizer</td>
+                                    <td>凯利公式</td>
+                                    <td>f = p - (1-p)/(w/l)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.5.2 风险约束 (PositionConstraints)</h4>
+                        <pre><code>@dataclass
+class PositionConstraints:
+    """仓位约束"""
+
+    max_position_pct: float = 0.10    # 单一持仓最大比例
+    max_sector_pct: float = 0.30      # 单一行业最大比例
+    max_positions: int = 20           # 最大持仓数量
+    min_position_pct: float = 0.01    # 最小持仓比例
+    max_leverage: float = 1.0         # 最大杠杆倍数</code></pre>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.5.3 预警系统 (AlertManager)</h4>
+                        <pre><code>class AlertType(Enum):
+    """预警类型"""
+    PRICE_ABOVE = "price_above"      # 价格上穿
+    PRICE_BELOW = "price_below"      # 价格下穿
+    DRAWDOWN = "drawdown"            # 回撤预警
+    VOLATILITY = "volatility"        # 波动率预警
+    VOLUME = "volume"                # 成交量预警
+
+class AlertSeverity(Enum):
+    """预警级别"""
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+class AlertManager:
+    """预警管理器"""
+
+    def add_rule(self, rule: AlertRule) -> None:
+        """添加预警规则"""
+        pass
+
+    def check_alerts(self, data: pd.DataFrame) -> list[Alert]:
+        """检查预警"""
+        pass</code></pre>
+                    </div>
+                </div>
+
+                <!-- Report Module -->
+                <div class="subsection">
+                    <h3 class="subsection-title">5.6 报告模块 (src/report)</h3>
+
+                    <div class="card">
+                        <h4>5.6.1 报告生成器 (ReportGenerator)</h4>
+                        <pre><code>class ReportGenerator:
+    """报告生成器"""
+
+    def generate_daily_report(
+        self,
+        data: dict,
+        output_format: str = "html"
+    ) -> str:
+        """生成每日报告"""
+        pass
+
+    def generate_backtest_report(
+        self,
+        result: BacktestResult,
+        output_format: str = "html"
+    ) -> str:
+        """生成回测报告"""
+        pass
+
+    def generate_risk_report(
+        self,
+        portfolio: Portfolio,
+        output_format: str = "html"
+    ) -> str:
+        """生成风险报告"""
+        pass</code></pre>
+                    </div>
+
+                    <div class="card">
+                        <h4>5.6.2 报告导出器 (ReportExporter)</h4>
+                        <p>支持的导出格式：</p>
+                        <div class="grid-4">
+                            <div class="tag tag-blue">HTML</div>
+                            <div class="tag tag-green">PDF</div>
+                            <div class="tag tag-purple">Markdown</div>
+                            <div class="tag tag-orange">Excel</div>
+                            <div class="tag tag-red">CSV</div>
+                            <div class="tag tag-blue">JSON</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 6: API -->
+            <section id="api" class="section">
+                <h2 class="section-title">
+                    <span class="icon">6</span>
+                    API文档
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">6.1 市场数据API</h3>
+
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/market/stocks</span>
+                        <span>获取股票列表</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/market/data/{symbol}</span>
+                        <span>获取历史数据</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/market/quote/{symbol}</span>
+                        <span>获取实时行情</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/market/info/{symbol}</span>
+                        <span>获取股票信息</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">6.2 分析API</h3>
+
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/analysis/technical</span>
+                        <span>技术分析</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/analysis/signals</span>
+                        <span>生成交易信号</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/analysis/patterns</span>
+                        <span>形态识别</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">6.3 回测API</h3>
+
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/backtest/run</span>
+                        <span>运行回测</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/backtest/compare</span>
+                        <span>策略对比</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/backtest/report/{symbol}</span>
+                        <span>获取回测报告</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">6.4 报告API</h3>
+
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/report/daily</span>
+                        <span>生成每日报告</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/report/portfolio</span>
+                        <span>生成组合报告</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-post">POST</span>
+                        <span class="path">/api/v1/report/risk</span>
+                        <span>生成风险报告</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method method-get">GET</span>
+                        <span class="path">/api/v1/report/export/{report_id}</span>
+                        <span>导出报告</span>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">6.5 API请求示例</h3>
+                    <pre><code># 获取历史数据
+GET /api/v1/market/data/AAPL?start_date=2024-01-01&end_date=2024-12-31
+
+# 运行回测
+POST /api/v1/backtest/run
+{
+    "symbol": "AAPL",
+    "strategy": "momentum",
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "initial_cash": 100000,
+    "commission": 0.001
+}
+
+# 技术分析
+POST /api/v1/analysis/technical
+{
+    "symbol": "AAPL",
+    "indicators": ["rsi", "macd", "bollinger"],
+    "period": 365
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Section 7: Manual -->
+            <section id="manual" class="section">
+                <h2 class="section-title">
+                    <span class="icon">7</span>
+                    使用手册
+                </h2>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.1 环境准备</h3>
+
+                    <div class="card">
+                        <h4>系统要求</h4>
+                        <ul>
+                            <li>Python 3.11+</li>
+                            <li>PostgreSQL 15+ (可选，用于数据持久化)</li>
+                            <li>Redis 7.0+ (可选，用于缓存)</li>
+                            <li>8GB+ RAM</li>
+                        </ul>
+                    </div>
+
+                    <div class="card">
+                        <h4>安装步骤</h4>
+                        <pre><code># 1. 克隆项目
+git clone https://github.com/your-repo/investmanager.git
+cd investmanager
+
+# 2. 创建虚拟环境
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# 3. 安装依赖
+pip install -r requirements.txt
+
+# 或使用 Poetry
+poetry install
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件配置数据库连接等</code></pre>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.2 启动服务</h3>
+
+                    <div class="card">
+                        <h4>启动FastAPI服务</h4>
+                        <pre><code># 开发模式
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+
+# 生产模式
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4</code></pre>
+                        <p>访问 <code>http://localhost:8000/docs</code> 查看API文档</p>
+                    </div>
+
+                    <div class="card">
+                        <h4>启动Streamlit仪表板</h4>
+                        <pre><code>streamlit run web/app.py</code></pre>
+                        <p>访问 <code>http://localhost:8501</code> 使用Web界面</p>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.3 使用示例</h3>
+
+                    <div class="card">
+                        <h4>Python SDK使用</h4>
+                        <pre><code>import asyncio
+from datetime import datetime, timedelta
+from src.data.sources.yfinance_source import YFinanceSource
+from src.analysis.technical.indicators import TechnicalIndicators
+from src.backtest.engine import BacktestEngine, BacktestConfig
+from src.strategies.momentum import MomentumStrategy
+
+# 1. 获取数据
+source = YFinanceSource()
+data = asyncio.run(source.fetch_ohlcv(
+    "AAPL",
+    datetime.now() - timedelta(days=365),
+    datetime.now()
+))
+
+# 2. 技术分析
+indicators = TechnicalIndicators()
+data_with_indicators = indicators.add_all_indicators(data)
+
+# 3. 运行回测
+engine = BacktestEngine(BacktestConfig(initial_cash=100000))
+strategy = MomentumStrategy()
+result = engine.run(strategy, data, "AAPL")
+
+# 4. 查看结果
+print(f"总收益率: {result.metrics.total_return:.2%}")
+print(f"夏普比率: {result.metrics.sharpe_ratio:.2f}")
+print(f"最大回撤: {result.metrics.max_drawdown:.2%}")</code></pre>
+                    </div>
+
+                    <div class="card">
+                        <h4>API调用示例</h4>
+                        <pre><code>import httpx
+
+# 获取股票数据
+response = httpx.get(
+    "http://localhost:8000/api/v1/market/data/AAPL",
+    params={
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31"
+    }
+)
+data = response.json()
+
+# 运行回测
+response = httpx.post(
+    "http://localhost:8000/api/v1/backtest/run",
+    json={
+        "symbol": "AAPL",
+        "strategy": "momentum",
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "initial_cash": 100000
+    }
+)
+result = response.json()
+print(f"总收益率: {result['metrics']['total_return']}")</code></pre>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.4 Web界面使用</h3>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <h4>市场概览页面</h4>
+                            <ul>
+                                <li>输入股票代码获取实时行情</li>
+                                <li>查看K线图和成交量</li>
+                                <li>一键技术分析</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>数据分析页面</h4>
+                            <ul>
+                                <li>选择分析类型（技术/基本面/形态）</li>
+                                <li>设置分析周期</li>
+                                <li>查看指标图表和信号</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>策略回测页面</h4>
+                            <ul>
+                                <li>选择策略类型</li>
+                                <li>设置初始资金和手续费</li>
+                                <li>查看回测结果和交易记录</li>
+                                <li>多策略对比分析</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>每日报告页面</h4>
+                            <ul>
+                                <li>输入监控股票列表</li>
+                                <li>生成市场报告</li>
+                                <li>导出多种格式</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.5 配置说明</h3>
+
+                    <div class="card">
+                        <h4>环境变量配置 (.env)</h4>
+                        <pre><code># 数据库配置
+DATABASE_URL=postgresql://user:password@localhost:5432/investmanager
+
+# Redis配置
+REDIS_URL=redis://localhost:6379/0
+
+# API配置
+API_HOST=0.0.0.0
+API_PORT=8000
+API_WORKERS=4
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+
+# 数据源配置
+YFINANCE_CACHE_DIR=.cache/yfinance
+AKSHARE_TOKEN=your_token
+
+# 通知配置
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your_email
+SMTP_PASSWORD=your_password
+SLACK_WEBHOOK_URL=https://hooks.slack.com/...</code></pre>
+                    </div>
+                </div>
+
+                <div class="subsection">
+                    <h3 class="subsection-title">7.6 常见问题</h3>
+
+                    <div class="card">
+                        <h4>Q: 数据获取失败怎么办？</h4>
+                        <p>A: 检查网络连接，确认API限制。YFinance有请求频率限制，建议添加缓存或使用代理。</p>
+                    </div>
+
+                    <div class="card">
+                        <h4>Q: 回测结果与预期不符？</h4>
+                        <p>A: 检查策略参数设置，确认数据完整性，注意交易成本和滑点的影响。</p>
+                    </div>
+
+                    <div class="card">
+                        <h4>Q: 如何添加自定义策略？</h4>
+                        <p>A: 继承BaseStrategy类，实现generate_signals方法，然后在策略模块中注册。</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; 2026 InvestManager. All rights reserved.</p>
+            <p>Version 1.0.0 | Generated on 2026-03-15</p>
+            <p style="margin-top: 15px;">
+                <a href="https://github.com/your-repo/investmanager">GitHub</a> |
+                <a href="mailto:support@example.com">Contact</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
