@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-18
+
+### Added
+
+#### Personalization System
+- **User Profile Management**: SQLite-based user preference storage
+  - Communication style (concise/balanced/detailed)
+  - Tone preference (formal/friendly/casual)
+  - Technical level (beginner/medium/expert)
+  - Risk preference and investment style
+  - Learning stages: ONBOARDING → LEARNING → MATURE
+
+- **Conversation Memory**: Per-user chat history with context summaries
+
+- **Interactive Learning**: Progressive preference discovery
+  - Automatic task generation based on interaction count
+  - Option-based preference setting
+  - Stock mention tracking and watchlist suggestions
+
+- **Personalized Prompts**: LLM responses tailored to user preferences
+
+#### Work Modes
+- **INVEST Mode**: Investment-focused assistant with LLM fallback
+- **CHAT Mode**: General conversation with full personalization
+- **STRICT Mode**: Command-only mode, no LLM chat
+
+#### LLM Provider Support
+- **Alibaba Bailian (阿里百炼)**: Qwen models via DashScope API
+  - Support for qwen-turbo, qwen-plus, qwen-max
+  - OpenAI-compatible API interface
+- **Provider Configuration**: `LLM_PROVIDER` environment variable
+
+#### New Commands
+- `综合分析 <代码>` - Full analysis pipeline (data → analysis → backtest → report)
+- `切换模式` - Cycle work modes
+- `当前模式` - Check current mode
+- `我的画像` - View user profile
+- `清除记忆` - Clear user memory
+
+### Fixed
+- User ID extraction in Feishu messages now prefers `open_id` with fallbacks to `user_id` and `union_id`
+
+### Changed
+- Dockerfile optimized with Chinese mirrors for faster builds
+- Feishu webhook supports encrypted event decryption
+
+---
+
 ## [1.0.0] - 2024-03-16
 
 ### Added

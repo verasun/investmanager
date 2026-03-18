@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from api.routes import analysis, backtest, market, report, tasks
+from api.routes import feishu
 from config.settings import settings
 
 
@@ -16,8 +17,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
     logger.info("Starting InvestManager API...")
 
-    # Initialize resources
-    # TODO: Initialize database connections, cache, etc.
+    # Initialize Feishu bot handlers if enabled
+    if settings.feishu_enabled:
+        from src.feishu.bot import get_feishu_bot
+        from src.feishu.handlers import register_all_handlers
+
+        bot = get_feishu_bot()
+        if bot:
+            register_all_handlers(bot)
+            logger.info("Feishu bot handlers registered")
 
     yield
 
@@ -47,6 +55,7 @@ app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["Analysis"]
 app.include_router(backtest.router, prefix="/api/v1/backtest", tags=["Backtest"])
 app.include_router(report.router, prefix="/api/v1/report", tags=["Reports"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
+app.include_router(feishu.router, prefix="/api", tags=["Feishu"])
 
 
 @app.get("/")

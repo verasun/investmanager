@@ -15,13 +15,13 @@
 - **风险管理**: 仓位管理、敞口追踪、风险预警
 - **报告生成**: 日报、回测报告、投资建议
 
-### v1.0 新特性
+### v1.1 新特性
 
-- **SQLite嵌入式数据库**: 无需外部数据库，简化部署
-- **本地LRU缓存**: 替代Redis，零依赖运行
-- **OAuth2邮件认证**: 安全的Gmail/Outlook邮件发送
-- **飞书集成**: IM机器人控制、报告推送、文档生成
-- **单容器部署**: Docker一键部署，开箱即用
+- **个人化系统**: 用户画像管理、对话记忆、偏好学习
+- **工作模式**: INVEST(投资助手)、CHAT(通用对话)、STRICT(严格模式)
+- **多LLM支持**: OpenAI、Anthropic、阿里百炼(Qwen系列)
+- **综合分析**: 一键执行完整分析流程
+- **智能解析**: 自然语言指令识别，无需精确命令格式
 
 ## 快速开始
 
@@ -82,11 +82,19 @@ investmanager/
 │   ├── cache/        # 本地缓存 (LRU)
 │   ├── email/        # OAuth2邮件
 │   ├── feishu/       # 飞书集成
+│   │   ├── bot.py        # 机器人核心
+│   │   ├── handlers.py   # 命令处理器
+│   │   └── intent_parser.py # 意图解析
+│   ├── memory/       # 个人化系统
+│   │   ├── profile_manager.py    # 用户画像
+│   │   ├── conversation_memory.py # 对话记忆
+│   │   ├── interactive_learning.py # 交互学习
+│   │   └── prompt_builder.py     # 个性化提示
 │   ├── analysis/     # 分析模块
 │   ├── backtest/     # 回测引擎
 │   ├── strategies/   # 交易策略
 │   └── report/       # 报告生成
-├── tests/            # 测试套件 (88个测试)
+├── tests/            # 测试套件
 ├── docs/             # 文档
 ├── scripts/          # 工具脚本
 └── web/              # Streamlit界面
@@ -98,13 +106,26 @@ investmanager/
 
 | 命令 | 说明 |
 |-----|------|
+| `综合分析 <代码>` | 完整分析流程（数据→分析→回测→报告）|
 | `收集数据 <代码>` | 收集股票数据 |
 | `分析 <代码>` | 分析股票 |
-| `回测 <策略> <代码>` | 运行回测 |
+| `回测 <策略> <代码> [天数]` | 运行回测，默认365天 |
 | `生成报告 [类型]` | 生成报告 |
 | `发送报告 <目标>` | 发送报告 |
 | `任务状态 <ID>` | 查询任务 |
+| `切换模式` | 切换工作模式 (投资/对话/严格) |
+| `当前模式` | 查看当前模式 |
+| `我的画像` | 查看个人偏好设置 |
+| `清除记忆` | 清除个人信息 |
 | `帮助` | 显示帮助 |
+
+### 工作模式
+
+| 模式 | 说明 |
+|------|------|
+| **INVEST** | 投资助手模式，支持自然语言对话 |
+| **CHAT** | 通用对话模式，可讨论任何话题 |
+| **STRICT** | 严格模式，仅响应精确命令 |
 
 ### 配置飞书
 
@@ -123,6 +144,9 @@ investmanager/
 | `SQLITE_DB_PATH` | 数据库路径 | `./data/investmanager.db` |
 | `LOCAL_CACHE_ENABLED` | 启用本地缓存 | `true` |
 | `FEISHU_ENABLED` | 启用飞书 | `false` |
+| `LLM_PROVIDER` | LLM提供商 | `openai` |
+| `ALIBABA_BAILIAN_API_KEY` | 阿里百炼API密钥 | - |
+| `ALIBABA_BAILIAN_MODEL` | Qwen模型 | `qwen-turbo` |
 | `EMAIL_PROVIDER` | 邮件提供商 | `gmail` |
 
 完整配置见 [.env.example](.env.example)

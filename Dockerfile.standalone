@@ -9,9 +9,13 @@
 # ============================================
 
 # Stage 1: Builder
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
+
+# Configure Chinese mirror for faster downloads
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,8 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install poetry
-RUN pip install --no-cache-dir poetry==1.7.1
+# Install poetry (using Tsinghua mirror for faster downloads)
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple poetry==1.7.1
 
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
@@ -30,9 +34,13 @@ RUN poetry lock --no-interaction || true
 RUN poetry export --without-hashes --only main -f requirements.txt -o requirements.txt || true
 
 # Stage 2: Production
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
 WORKDIR /app
+
+# Configure Chinese mirror for faster downloads
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -42,9 +50,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Copy requirements from builder and install
+# Copy requirements from builder and install (using Tsinghua mirror)
 COPY --from=builder /build/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt && rm requirements.txt
 
 # Copy application code
 COPY --chown=appuser:appuser . .

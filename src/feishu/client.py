@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
+from Crypto.Cipher import AES
 from loguru import logger
 
 from config.settings import settings

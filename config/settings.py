@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
+    # LLM Provider Settings
+    llm_provider: Literal["openai", "anthropic", "alibaba_bailian"] = "openai"
+    llm_model: str = ""  # Model name, provider-specific defaults used if empty
+
+    # Alibaba Bailian (阿里百炼 / DashScope)
+    alibaba_bailian_api_key: str = ""
+    alibaba_bailian_model: str = "qwen-turbo"  # qwen-turbo, qwen-plus, qwen-max, etc.
+
     # Scheduler
     scheduler_enabled: bool = True
     daily_analysis_time: str = "18:00"

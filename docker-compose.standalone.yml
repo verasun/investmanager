@@ -14,8 +14,6 @@
 # - OAuth2 email authentication
 # ============================================
 
-version: '3.8'
-
 services:
   # ==========================================
   # Main Application (All-in-One)
@@ -48,6 +46,12 @@ services:
       - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # LLM Provider
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ALIBABA_BAILIAN_API_KEY=${ALIBABA_BAILIAN_API_KEY:-}
+      - ALIBABA_BAILIAN_MODEL=${ALIBABA_BAILIAN_MODEL:-qwen-turbo}
 
       # Email OAuth2
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-gmail}

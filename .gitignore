@@ -29,6 +29,7 @@ env/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
@@ -51,6 +52,7 @@ dmypy.json
 # Environment
 .env
 .env.local
+.env.backup*
 
 # Logs
 logs/

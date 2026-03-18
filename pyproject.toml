@@ -41,6 +41,7 @@ markdown = "^3.4"
 # Configuration
 pyyaml = "^6.0"  # YAML config support
 cryptography = "^42.0"  # Token encryption
+pycryptodome = "^3.20"  # AES encryption for Feishu
 # Others
 pydantic = {extras = ["email"], version = "^2.0"}
 pydantic-settings = "^2.0"
