@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import sys
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
@@ -37,6 +38,54 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import settings
+
+
+# ============================================
+# Message Deduplication
+# ============================================
+
+class MessageDeduplicator:
+    """LRU cache for message deduplication to prevent duplicate processing."""
+
+    def __init__(self, max_size: int = 1000, ttl_seconds: int = 300):
+        self._cache: OrderedDict[str, float] = OrderedDict()
+        self._max_size = max_size
+        self._ttl_seconds = ttl_seconds
+
+    def is_duplicate(self, message_id: str) -> bool:
+        """Check if message was already processed."""
+        # Clean up expired entries
+        self._cleanup()
+
+        if message_id in self._cache:
+            # Move to end (most recently accessed)
+            self._cache.move_to_end(message_id)
+            return True
+        return False
+
+    def mark_processed(self, message_id: str):
+        """Mark message as processed."""
+        if message_id in self._cache:
+            self._cache.move_to_end(message_id)
+        else:
+            self._cache[message_id] = asyncio.get_event_loop().time()
+            # Evict oldest if over capacity
+            if len(self._cache) > self._max_size:
+                self._cache.popitem(last=False)
+
+    def _cleanup(self):
+        """Remove expired entries."""
+        current_time = asyncio.get_event_loop().time()
+        expired = [
+            msg_id for msg_id, timestamp in self._cache.items()
+            if current_time - timestamp > self._ttl_seconds
+        ]
+        for msg_id in expired:
+            del self._cache[msg_id]
+
+
+# Global deduplicator instance
+_message_deduplicator = MessageDeduplicator()
 
 
 # ============================================
@@ -680,6 +729,14 @@ def register_routes(app: FastAPI):
         # Extract message info
         message_id = message.get("message_id")
         chat_id = message.get("chat_id")
+
+        # Check for duplicate message (Feishu may retry)
+        if _message_deduplicator.is_duplicate(message_id):
+            logger.debug(f"Duplicate message ignored: {message_id}")
+            return {"status": "duplicate"}
+
+        # Mark message as being processed
+        _message_deduplicator.mark_processed(message_id)
 
         # Extract sender ID
         sender = event_data.get("sender", {})
