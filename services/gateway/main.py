@@ -635,6 +635,7 @@ def register_routes(app: FastAPI):
     # ========================================
 
     @app.post("/feishu/webhook")
+    @app.post("/api/feishu/webhook")
     async def feishu_webhook(request: Request):
         """Handle Feishu webhook events.
 
