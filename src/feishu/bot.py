@@ -10,6 +10,7 @@ from loguru import logger
 
 from config.settings import settings
 from src.feishu.client import FeishuClient, get_feishu_client
+from src.feishu.gateway import WorkMode, MODE_NAMES, MessageContext, get_message_router
 
 
 class CommandType(str, Enum):
@@ -30,44 +31,8 @@ class CommandType(str, Enum):
     UNKNOWN = "unknown"
 
 
-# 工作模式
-class WorkMode(str, Enum):
-    """Work modes for the bot."""
-
-    INVEST = "invest"  # 投资助手模式
-    CHAT = "chat"  # 通用对话模式
-    STRICT = "strict"  # 严格模式
-
-
-# 用户模式存储
-_user_modes: dict[str, str] = {}  # {user_id: mode}
-
-# 模式名称映射
-MODE_NAMES = {
-    WorkMode.INVEST: "投资助手",
-    WorkMode.CHAT: "通用对话",
-    WorkMode.STRICT: "严格模式",
-}
-
-
-def get_user_mode(user_id: str) -> str:
-    """Get user's current work mode."""
-    return _user_modes.get(user_id, WorkMode.INVEST)
-
-
-def set_user_mode(user_id: str, mode: str) -> None:
-    """Set user's work mode."""
-    _user_modes[user_id] = mode
-
-
-def cycle_user_mode(user_id: str) -> str:
-    """Cycle to next mode for user."""
-    current = _user_modes.get(user_id, WorkMode.INVEST)
-    modes = [WorkMode.INVEST, WorkMode.CHAT, WorkMode.STRICT]
-    current_idx = modes.index(current)
-    next_mode = modes[(current_idx + 1) % len(modes)]
-    _user_modes[user_id] = next_mode
-    return next_mode
+# Note: WorkMode enum and _user_modes dict moved to gateway/message_router.py
+# and profile_manager.py for persistence
 
 
 @dataclass
@@ -109,10 +74,10 @@ class CommandParser:
             r"切换模式",
             r"切换到投资模式",
             r"切换到对话模式",
-            r"切换到严格模式",
+            r"切换到开发模式",
             r"切换到chat模式",
             r"切换到invest模式",
-            r"切换到strict模式",
+            r"切换到dev模式",
         ],
         CommandType.MODE_STATUS: [
             r"当前模式",
@@ -335,8 +300,8 @@ class FeishuBot:
         message_id = message.get("message_id")
         chat_id = message.get("chat_id")
 
-        # Extract sender ID - prefer open_id (most reliable), fallback to user_id/union_id
-        sender = message.get("sender", {})
+        # Extract sender ID - sender is at event level, not message level
+        sender = event_data.get("sender", {})
         sender_id = sender.get("sender_id", {})
         user_id = (
             sender_id.get("open_id") or
@@ -365,8 +330,9 @@ class FeishuBot:
             "message_id": message_id,
         }
 
-        # Get user's current mode
-        user_mode = _user_modes.get(user_id, WorkMode.INVEST)
+        # Get user's current mode from persistent storage
+        router = get_message_router()
+        user_mode = await router.get_user_mode(user_id)
         logger.info(f"User {user_id} mode: {user_mode}")
 
         command = self._parser.parse(text, context)
@@ -375,6 +341,22 @@ class FeishuBot:
         # Handle help command directly
         if command.command_type == CommandType.HELP:
             await self._client.reply_message(message_id, self._parser.HELP_TEXT)
+            return {"status": "ok"}
+
+        # DEV mode: Handle via Claude Code capability
+        if user_mode == WorkMode.DEV and command.command_type == CommandType.UNKNOWN:
+            from src.feishu.capabilities import get_dev_capability
+
+            dev_cap = get_dev_capability()
+            msg_context = MessageContext(
+                user_id=user_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                raw_text=text,
+                work_mode=user_mode,
+            )
+            result = await dev_cap.handle(msg_context)
+            await self._client.reply_message(message_id, result.message)
             return {"status": "ok"}
 
         # CHAT mode: Direct LLM conversation with personalization
@@ -393,14 +375,9 @@ class FeishuBot:
             await self._client.reply_message(message_id, reply)
             return {"status": "ok"}
 
-        # STRICT mode: Only respond to commands, show help for unknown
-        if user_mode == WorkMode.STRICT and command.command_type == CommandType.UNKNOWN:
-            command = await self._try_intent_parsing(text, context, message_id, strict=True)
-            if command is None:
-                return {"status": "ok"}
-        elif command.command_type == CommandType.UNKNOWN:
-            # INVEST mode: Try intent parsing, then LLM chat
-            command = await self._try_intent_parsing(text, context, message_id, strict=False)
+        # INVEST mode or known command: Try intent parsing, then LLM chat
+        if command.command_type == CommandType.UNKNOWN:
+            command = await self._try_intent_parsing(text, context, message_id, user_mode=user_mode)
             if command is None:
                 return {"status": "ok"}
 
@@ -434,7 +411,7 @@ class FeishuBot:
         text: str,
         context: dict,
         message_id: str,
-        strict: bool = False,
+        user_mode: str = "invest",
     ) -> Optional[ParsedCommand]:
         """Try to parse intent using LLM when regex fails.
 
@@ -442,7 +419,7 @@ class FeishuBot:
             text: User message text
             context: Context dict with user_id, chat_id, message_id
             message_id: Message ID for reply
-            strict: If True, show help card for unknown instead of LLM chat
+            user_mode: Current user mode (invest, chat, dev)
 
         Returns:
             ParsedCommand or None
@@ -483,23 +460,18 @@ class FeishuBot:
 
         # If not a valid command
         if confidence < 0.5 or command_type == CommandType.UNKNOWN:
-            if strict:
-                # STRICT mode: Show help card
-                logger.info(f"Strict mode: showing help card for unknown intent")
-                await self._send_help_card(message_id)
-            else:
-                # INVEST mode: LLM chat response with personalization
-                logger.info(f"Unknown intent or low confidence, using LLM chat")
-                user_id = context.get("user_id", "")
+            # INVEST mode: LLM chat response with personalization
+            logger.info(f"Unknown intent or low confidence, using LLM chat")
+            user_id = context.get("user_id", "")
 
-                # Check for learning response first
-                learning_result = await parser.handle_learning_response(user_id, text)
-                if learning_result:
-                    await self._client.reply_message(message_id, learning_result.get("message", "好的"))
-                    return None
+            # Check for learning response first
+            learning_result = await parser.handle_learning_response(user_id, text)
+            if learning_result:
+                await self._client.reply_message(message_id, learning_result.get("message", "好的"))
+                return None
 
-                reply = await parser.chat(text, user_id=user_id)
-                await self._client.reply_message(message_id, reply)
+            reply = await parser.chat(text, user_id=user_id)
+            await self._client.reply_message(message_id, reply)
             return None
 
         logger.info(f"LLM parsed command: {command_type} with params: {params}")
@@ -579,7 +551,7 @@ class FeishuBot:
 
         await self._client.reply_message(
             message_id,
-            json.dumps(card),
+            card,  # Pass dict directly, not json.dumps
             msg_type="interactive",
         )
 

@@ -748,32 +748,36 @@ async def handle_mode_switch(command: ParsedCommand) -> dict[str, Any]:
     Returns:
         Result dict
     """
-    from src.feishu.bot import (
-        WorkMode,
-        MODE_NAMES,
-        get_user_mode,
-        set_user_mode,
-        cycle_user_mode,
-    )
+    from src.feishu.gateway import WorkMode, MODE_NAMES, get_message_router
+    from src.memory import get_profile_manager
 
     user_id = command.user_id
     raw_text = command.raw_text.lower()
 
+    router = get_message_router()
+    profile_manager = get_profile_manager()
+
     # Determine target mode
     if "投资" in raw_text or "invest" in raw_text:
-        target_mode = WorkMode.INVEST
-        set_user_mode(user_id, target_mode)
+        target_mode = WorkMode.INVEST.value
     elif "对话" in raw_text or "chat" in raw_text:
-        target_mode = WorkMode.CHAT
-        set_user_mode(user_id, target_mode)
-    elif "严格" in raw_text or "strict" in raw_text:
-        target_mode = WorkMode.STRICT
-        set_user_mode(user_id, target_mode)
+        target_mode = WorkMode.CHAT.value
+    elif "开发" in raw_text or "dev" in raw_text:
+        target_mode = WorkMode.DEV.value
     else:
         # Cycle through modes
-        target_mode = cycle_user_mode(user_id)
+        target_mode = await router.cycle_user_mode(user_id)
+        mode_name = router.get_mode_name(target_mode)
+        return {
+            "status": "success",
+            "message": f"已切换到「{mode_name}」模式",
+            "mode": target_mode,
+            "mode_name": mode_name,
+        }
 
-    mode_name = MODE_NAMES.get(target_mode, target_mode)
+    # Set specific mode
+    await profile_manager.set_work_mode(user_id, target_mode)
+    mode_name = router.get_mode_name(target_mode)
 
     logger.info(f"Switched user {user_id} to mode: {target_mode}")
 
@@ -795,26 +799,33 @@ async def handle_mode_status(command: ParsedCommand) -> dict[str, Any]:
     Returns:
         Result dict with current mode info
     """
-    from src.feishu.bot import (
-        WorkMode,
-        MODE_NAMES,
-        get_user_mode,
-    )
+    from src.feishu.gateway import WorkMode, get_message_router
+    from src.memory import get_profile_manager
 
     user_id = command.user_id
-    current_mode = get_user_mode(user_id)
-    mode_name = MODE_NAMES.get(current_mode, current_mode)
+
+    router = get_message_router()
+    profile_manager = get_profile_manager()
+
+    current_mode = await profile_manager.get_work_mode(user_id)
+    mode_name = router.get_mode_name(current_mode)
 
     # Build mode description
     mode_desc = {
         WorkMode.INVEST: "专注股票分析，我会为您提供专业的投资建议",
         WorkMode.CHAT: "自由对话，您可以和我聊任何话题",
-        WorkMode.STRICT: "仅响应指令，不支持闲聊",
+        WorkMode.DEV: "开发模式，通过 Claude Code 协助开发和调试",
     }
+
+    try:
+        mode_key = WorkMode(current_mode)
+        desc = mode_desc.get(mode_key, "")
+    except ValueError:
+        desc = ""
 
     return {
         "status": "success",
-        "message": f"当前模式：「{mode_name}」\n{mode_desc.get(current_mode, '')}",
+        "message": f"当前模式：「{mode_name}」\n{desc}",
         "mode": current_mode,
         "mode_name": mode_name,
     }

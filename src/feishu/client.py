@@ -64,7 +64,7 @@ class FeishuClient:
         token = await self.get_access_token()
         return {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
         }
 
     async def get_access_token(self) -> str:
@@ -233,6 +233,8 @@ class FeishuClient:
                 headers=await self._get_headers(),
                 json=data,
             )
+            if response.status_code != 200:
+                logger.error(f"Reply message failed: status={response.status_code}, body={response.text}")
             response.raise_for_status()
             return response.json()
 

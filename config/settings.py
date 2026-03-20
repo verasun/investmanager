@@ -102,6 +102,21 @@ class Settings(BaseSettings):
     default_initial_capital: float = 1_000_000.0
     default_commission: float = 0.0003  # 0.03%
 
+    # Web Search Settings
+    web_search_enabled: bool = True
+    web_search_engine: Literal["duckduckgo", "tavily", "bing"] = "duckduckgo"
+    web_search_max_results: int = 5
+    web_search_timeout: int = 10  # seconds
+
+    # Optional API keys for premium search engines
+    tavily_api_key: str = ""
+    bing_search_api_key: str = ""
+    bing_search_endpoint: str = ""
+
+    # Claude Code Integration (for DEV mode)
+    claude_code_enabled: bool = False
+    claude_code_working_dir: str = ""  # Working directory for Claude Code, defaults to current dir
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""

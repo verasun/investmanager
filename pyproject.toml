@@ -4,7 +4,15 @@ version = "0.1.0"
 description = "Financial quantitative analysis system for A-shares, US stocks and derivatives"
 authors = ["InvestManager Team"]
 readme = "README.md"
-packages = [{include = "src"}, {include = "api"}, {include = "config"}]
+packages = [{include = "src"}, {include = "api"}, {include = "config"}, {include = "services"}]
+
+[tool.poetry.scripts]
+# Multi-process services
+gateway = "services.gateway.main:run_gateway"
+llm-service = "services.llm.main:run_llm_service"
+invest-service = "services.invest.main:run_invest_service"
+chat-service = "services.chat.main:run_chat_service"
+dev-service = "services.dev.main:run_dev_service"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -50,6 +58,7 @@ loguru = "^0.7"
 httpx = "^0.25"
 tenacity = "^8.2"
 aiofiles = "^23.0"
+duckduckgo-search = "^6.0"  # DuckDuckGo search for web search feature
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4"

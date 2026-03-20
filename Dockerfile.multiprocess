@@ -1,0 +1,85 @@
+# ============================================
+# InvestManager - Multi-Process Architecture
+# ============================================
+# This Dockerfile supports running multiple services:
+# - Gateway Service (Feishu webhook handler)
+# - LLM Service (Unified LLM API)
+# - Invest Service (Investment analysis)
+# - Chat Service (General conversation)
+# - Dev Service (Claude Code integration)
+#
+# Usage:
+#   docker-compose -f docker-compose.multiprocess.yml up -d
+# ============================================
+
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Configure Chinese mirror for faster downloads
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install poetry
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple poetry==1.7.1
+
+# Copy dependency files
+COPY pyproject.toml ./
+
+# Export dependencies to requirements.txt (without poetry.lock)
+RUN poetry lock --no-interaction || true && \
+    poetry export --without-hashes --only main -f requirements.txt -o requirements.txt || \
+    pip freeze > requirements.txt
+
+# Stage 2: Production
+FROM python:3.11-slim AS production
+
+WORKDIR /app
+
+# Configure Chinese mirror for faster downloads
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Copy requirements from builder and install
+COPY --from=builder /build/requirements.txt .
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt && rm requirements.txt
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Create necessary directories
+RUN mkdir -p data reports logs config && \
+    chown -R appuser:appuser data reports logs config
+
+# Switch to non-root user
+USER appuser
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_ENV=production \
+    DATABASE_BACKEND=sqlite \
+    SQLITE_DB_PATH=/app/data/investmanager.db \
+    LOCAL_CACHE_ENABLED=true
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Default command (can be overridden by docker-compose)
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -5,7 +5,7 @@
 # Help:  make help
 # ============================================
 
-.PHONY: help install setup dev build up down logs shell test lint format check db-init db-reset db-migrate clean docker-clean package package-export run-image
+.PHONY: help install setup dev build up down logs shell test lint format check db-init db-reset db-migrate clean docker-clean package package-export run-image dev-multiprocess up-multiprocess down-multiprocess
 
 # Default target
 .DEFAULT_GOAL := help
@@ -29,10 +29,10 @@ help: ## Show this help message
 	@grep -E '^install:|^setup:' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(YELLOW)Docker Operations:$(NC)"
-	@grep -E '^build:|^up:|^down:|^logs:|^shell:|^web:|^prod:' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^build:|^up:|^down:|^logs:|^shell:|^web:|^prod:|^up-multiprocess:|^down-multiprocess:' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(YELLOW)Development:$(NC)"
-	@grep -E '^dev:|^test:|^test-local:|^lint:|^format:|^check:' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^dev:|^dev-multiprocess:|^test:|^test-local:|^lint:|^format:|^check:' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(YELLOW)Database:$(NC)"
 	@grep -E '^db-' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
@@ -72,6 +72,9 @@ dev-web: ## Start local Web UI server
 dev-all: ## Start all local services (API + Web + Worker)
 	@./scripts/dev.sh all
 
+dev-multiprocess: ## Start multi-process services (5 services locally)
+	@./scripts/start-multiprocess.sh
+
 # ============================================
 # Docker Operations
 # ============================================
@@ -110,6 +113,28 @@ prod: ## Start production environment
 
 prod-down: ## Stop production environment
 	@docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+# ============================================
+# Multi-Process Deployment
+# ============================================
+up-multiprocess: ## Start multi-process architecture (5 services)
+	@echo "$(BLUE)Starting multi-process deployment...$(NC)"
+	@docker compose -f docker-compose.multiprocess.yml up -d
+	@echo "$(GREEN)Multi-process services started!$(NC)"
+	@echo ""
+	@echo "Gateway:  http://localhost:8000"
+	@echo "LLM:      http://localhost:8001"
+	@echo "Invest:   http://localhost:8010"
+	@echo "Chat:     http://localhost:8011"
+	@echo "Dev:      http://localhost:8012"
+
+down-multiprocess: ## Stop multi-process deployment
+	@echo "$(BLUE)Stopping multi-process deployment...$(NC)"
+	@docker compose -f docker-compose.multiprocess.yml down
+	@echo "$(GREEN)Multi-process services stopped!$(NC)"
+
+logs-multiprocess: ## View multi-process logs
+	@docker compose -f docker-compose.multiprocess.yml logs -f
 
 # ============================================
 # Testing & Code Quality

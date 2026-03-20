@@ -8,6 +8,26 @@ from loguru import logger
 from config.settings import settings
 
 
+# Web search tool definition for LLM function calling
+WEB_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": "搜索互联网获取最新信息。当用户询问时事新闻、最新数据、实时信息、当前事件或需要最新资料时使用此工具。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索关键词，应该是简洁、准确的搜索词"
+                }
+            },
+            "required": ["query"]
+        }
+    }
+}
+
+
 class IntentParser:
     """Parse natural language commands using LLM with personalization support."""
 
@@ -53,6 +73,25 @@ class IntentParser:
         self._client = None
         self._enabled = self._check_llm_available()
         self._memory_modules_loaded = False
+        self._web_search_modules_loaded = False
+
+    def _load_web_search_modules(self):
+        """Lazily load web search modules."""
+        if self._web_search_modules_loaded:
+            return
+
+        try:
+            from src.web import WebSearcher, SearchIntentDetector, SearchEngine
+            from src.web.search import get_web_searcher
+            from src.web.intent_detector import get_intent_detector
+
+            self._web_searcher = get_web_searcher()
+            self._intent_detector = get_intent_detector()
+            self._search_engine = SearchEngine
+            self._web_search_modules_loaded = True
+        except Exception as e:
+            logger.warning(f"Failed to load web search modules: {e}")
+            self._web_search_modules_loaded = False
 
     def _load_memory_modules(self):
         """Lazily load memory modules to avoid circular imports."""
@@ -168,6 +207,34 @@ class IntentParser:
         if system_prompt is None and not unrestricted:
             system_prompt = self.DEFAULT_CHAT_PROMPT
 
+        # Try web search with tool calling if enabled
+        if settings.web_search_enabled:
+            self._load_web_search_modules()
+            if self._web_search_modules_loaded:
+                result = await self._chat_with_web_search(
+                    user_message, system_prompt, unrestricted
+                )
+                if result:
+                    # Record assistant response
+                    if user_id and self._memory_modules_loaded:
+                        try:
+                            await self._conversation_memory.add_message(
+                                user_id, "assistant", result
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to record assistant message: {e}")
+
+                    # Append learning task options if applicable
+                    if learning_task_info:
+                        options_text = "\n".join(
+                            f"{i+1}. {opt}" for i, opt in enumerate(learning_task_info["options"])
+                        )
+                        result = f"{result}\n\n{learning_task_info['question']}\n{options_text}"
+
+                    logger.info(f"LLM chat response (with web search): {result[:100]}...")
+                    return result
+
+        # Standard LLM call without web search
         result = await self._get_llm_response(
             user_message,
             chat_mode=True,
@@ -196,6 +263,198 @@ class IntentParser:
 
         logger.info(f"LLM chat response: {result[:100]}...")
         return result
+
+    async def _chat_with_web_search(
+        self,
+        user_message: str,
+        system_prompt: Optional[str],
+        unrestricted: bool,
+    ) -> Optional[str]:
+        """Chat with LLM using web search tool calling.
+
+        Args:
+            user_message: User's message
+            system_prompt: System prompt to use
+            unrestricted: Whether in unrestricted mode
+
+        Returns:
+            LLM response string or None if tool calling not supported
+        """
+        provider = settings.llm_provider
+
+        try:
+            # Try OpenAI-compatible tool calling (works for OpenAI and Alibaba Bailian)
+            if settings.alibaba_bailian_api_key and provider == "alibaba_bailian":
+                return await self._call_with_tools_alibaba_bailian(
+                    user_message, system_prompt, unrestricted
+                )
+            elif settings.openai_api_key and provider == "openai":
+                return await self._call_with_tools_openai(
+                    user_message, system_prompt, unrestricted
+                )
+            # Fallback: keyword-based search detection
+            elif self._intent_detector.needs_search(user_message):
+                logger.info(f"Using keyword-based search for: {user_message[:50]}")
+                intent = self._intent_detector.detect(user_message)
+                search_query = intent.query or user_message
+
+                # Execute search
+                engine = self._search_engine(settings.web_search_engine)
+                search_response = await self._web_searcher.search(search_query, engine)
+
+                if not search_response.error:
+                    # Enrich message with search results
+                    search_context = self._web_searcher.format_results_for_llm(search_response)
+                    enriched_message = f"{user_message}\n\n[搜索结果]\n{search_context}"
+
+                    # Get LLM response with search context
+                    return await self._get_llm_response(
+                        enriched_message,
+                        chat_mode=True,
+                        unrestricted=unrestricted,
+                        system_prompt=system_prompt,
+                    )
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Web search tool calling failed: {e}")
+            return None
+
+    async def _call_with_tools_openai(
+        self,
+        user_message: str,
+        system_prompt: Optional[str],
+        unrestricted: bool,
+    ) -> Optional[str]:
+        """Call OpenAI with web search tool."""
+        import openai
+
+        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+
+        messages = []
+        if not unrestricted and system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_message})
+
+        model = getattr(settings, 'openai_model', 'gpt-3.5-turbo') or 'gpt-3.5-turbo'
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=[WEB_SEARCH_TOOL],
+            tool_choice="auto",
+            temperature=0.7,
+            max_tokens=800,
+        )
+
+        message = response.choices[0].message
+
+        # Handle tool call
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "web_search":
+                    args = json.loads(tool_call.function.arguments)
+                    query = args.get("query", user_message)
+
+                    logger.info(f"OpenAI requested web search: {query}")
+
+                    # Execute search
+                    engine = self._search_engine(settings.web_search_engine)
+                    search_result = await self._web_searcher.search(query, engine)
+                    search_context = self._web_searcher.format_results_for_llm(search_result)
+
+                    # Continue conversation with search results
+                    messages.append(message)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": search_context,
+                    })
+
+                    # Get final response
+                    final_response = await client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=800,
+                    )
+                    return final_response.choices[0].message.content
+
+        return message.content
+
+    async def _call_with_tools_alibaba_bailian(
+        self,
+        user_message: str,
+        system_prompt: Optional[str],
+        unrestricted: bool,
+    ) -> Optional[str]:
+        """Call Alibaba Bailian (Qwen) with web search tool.
+
+        Qwen models support OpenAI-compatible function calling.
+        """
+        import openai
+
+        model = settings.alibaba_bailian_model or 'qwen-turbo'
+
+        client = openai.AsyncOpenAI(
+            api_key=settings.alibaba_bailian_api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+
+        messages = []
+        if not unrestricted and system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_message})
+
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=[WEB_SEARCH_TOOL],
+                tool_choice="auto",
+                temperature=0.7,
+                max_tokens=800,
+            )
+        except Exception as e:
+            # Some Qwen models may not support tools, fallback to keyword-based
+            logger.warning(f"Alibaba Bailian tool calling failed: {e}, using keyword-based fallback")
+            return None
+
+        message = response.choices[0].message
+
+        # Handle tool call
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "web_search":
+                    args = json.loads(tool_call.function.arguments)
+                    query = args.get("query", user_message)
+
+                    logger.info(f"Alibaba Bailian requested web search: {query}")
+
+                    # Execute search
+                    engine = self._search_engine(settings.web_search_engine)
+                    search_result = await self._web_searcher.search(query, engine)
+                    search_context = self._web_searcher.format_results_for_llm(search_result)
+
+                    # Continue conversation with search results
+                    messages.append(message)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": search_context,
+                    })
+
+                    # Get final response
+                    final_response = await client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=800,
+                    )
+                    return final_response.choices[0].message.content
+
+        return message.content
 
     async def handle_learning_response(
         self,

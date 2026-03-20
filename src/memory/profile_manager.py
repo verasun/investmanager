@@ -84,6 +84,9 @@ class UserProfile:
     investment_experience: Optional[str] = None
     investment_horizon: Optional[str] = None
 
+    # 工作模式
+    work_mode: str = "invest"  # invest, chat, dev
+
     # 关注领域
     preferred_topics: list[str] = field(default_factory=list)
     favorite_stocks: list[str] = field(default_factory=list)
@@ -115,6 +118,7 @@ class UserProfile:
             investment_style=data.get("investment_style"),
             investment_experience=data.get("investment_experience"),
             investment_horizon=data.get("investment_horizon"),
+            work_mode=data.get("work_mode", "invest"),
             preferred_topics=data.get("preferred_topics", []),
             favorite_stocks=data.get("favorite_stocks", []),
             watchlist=data.get("watchlist", []),
@@ -168,6 +172,7 @@ class UserProfileManager:
         investment_style TEXT,
         investment_experience TEXT,
         investment_horizon TEXT,
+        work_mode TEXT DEFAULT 'invest',
         preferred_topics TEXT,
         favorite_stocks TEXT,
         watchlist TEXT,
@@ -186,7 +191,7 @@ class UserProfileManager:
         self._initialized = False
 
     async def _ensure_table(self) -> None:
-        """Ensure the table exists."""
+        """Ensure the table exists and has all required columns."""
         if self._initialized:
             return
 
@@ -194,6 +199,13 @@ class UserProfileManager:
 
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(self.CREATE_TABLE_SQL)
+            # Migration: Add work_mode column if it doesn't exist
+            try:
+                await db.execute(
+                    "ALTER TABLE user_profiles ADD COLUMN work_mode TEXT DEFAULT 'invest'"
+                )
+            except Exception:
+                pass  # Column already exists
             await db.commit()
 
         self._initialized = True
@@ -227,6 +239,7 @@ class UserProfileManager:
                     investment_style=row["investment_style"],
                     investment_experience=row["investment_experience"],
                     investment_horizon=row["investment_horizon"],
+                    work_mode=row["work_mode"] or "invest",
                     preferred_topics=json.loads(row["preferred_topics"] or "[]"),
                     favorite_stocks=json.loads(row["favorite_stocks"] or "[]"),
                     watchlist=json.loads(row["watchlist"] or "[]"),
@@ -264,10 +277,10 @@ class UserProfileManager:
                 INSERT OR REPLACE INTO user_profiles (
                     user_id, nickname, communication_style, tone_preference,
                     technical_level, risk_preference, investment_style,
-                    investment_experience, investment_horizon, preferred_topics,
-                    favorite_stocks, watchlist, stock_mentions, total_interactions,
-                    last_interaction_at, created_at, learning_stage
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    investment_experience, investment_horizon, work_mode,
+                    preferred_topics, favorite_stocks, watchlist, stock_mentions,
+                    total_interactions, last_interaction_at, created_at, learning_stage
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     profile.user_id,
@@ -279,6 +292,7 @@ class UserProfileManager:
                     profile.investment_style,
                     profile.investment_experience,
                     profile.investment_horizon,
+                    profile.work_mode,
                     json.dumps(profile.preferred_topics),
                     json.dumps(profile.favorite_stocks),
                     json.dumps(profile.watchlist),
@@ -308,7 +322,7 @@ class UserProfileManager:
         valid_keys = {
             "communication_style", "tone_preference", "technical_level",
             "risk_preference", "investment_style", "investment_experience",
-            "investment_horizon", "nickname",
+            "investment_horizon", "nickname", "work_mode",
         }
 
         if key in valid_keys:
@@ -316,6 +330,31 @@ class UserProfileManager:
             await self.update(profile)
 
         return profile
+
+    async def get_work_mode(self, user_id: str) -> str:
+        """Get user's current work mode."""
+        profile = await self.get(user_id)
+        return profile.work_mode
+
+    async def set_work_mode(self, user_id: str, mode: str) -> UserProfile:
+        """Set user's work mode."""
+        valid_modes = {"invest", "chat", "dev"}
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid work mode: {mode}. Valid modes: {valid_modes}")
+        return await self.set_preference(user_id, "work_mode", mode)
+
+    async def cycle_work_mode(self, user_id: str) -> tuple[str, UserProfile]:
+        """Cycle to next work mode for user.
+
+        Returns:
+            Tuple of (new_mode, updated_profile)
+        """
+        profile = await self.get(user_id)
+        modes = ["invest", "chat", "dev"]
+        current_idx = modes.index(profile.work_mode) if profile.work_mode in modes else 0
+        next_mode = modes[(current_idx + 1) % len(modes)]
+        profile = await self.set_work_mode(user_id, next_mode)
+        return next_mode, profile
 
     async def add_to_watchlist(self, user_id: str, stock: str) -> UserProfile:
         """Add stock to user's watchlist."""

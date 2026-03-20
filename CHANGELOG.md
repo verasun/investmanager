@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-20
+
+### Added
+
+#### Multi-Process Architecture
+- **Gateway Service (:8000)**: Central traffic entry point
+  - Webhook handler for Feishu events
+  - LLM proxy for unified API access
+  - Capability router based on work mode
+
+- **LLM Service (:8001)**: Dedicated LLM API proxy
+  - Support for Alibaba Bailian (Qwen/Kimi)
+  - OpenAI and Anthropic compatible
+  - Independent scaling and rate limiting
+
+- **Capability Services**:
+  - **Invest (:8010)**: Stock analysis, backtest, reports
+  - **Chat (:8011)**: Personalized conversation with memory
+  - **Dev (:8012)**: Claude Code integration for development
+
+#### Working Directory Isolation
+- All data stored in configurable `WORK_DIR` (default: `/root/autowork`)
+- SQLite database: `$WORK_DIR/data/investmanager.db`
+- Logs: `$WORK_DIR/logs/`
+- Reports: `$WORK_DIR/reports/`
+
+#### Deployment Scripts
+- `scripts/start-multiprocess.sh`: Local multi-process startup
+- `docker-compose.multiprocess.yml`: Docker deployment
+- `make dev-multiprocess`: Quick start command
+- `make up-multiprocess`: Docker deployment command
+
+#### DEV Mode
+- Claude Code CLI integration
+- Subprocess execution with configurable working directory
+- Full permission for LLM and Claude operations
+
+### Changed
+- Refactored `src/feishu/gateway/` for message routing
+- Created `services/` directory for multi-process services
+- Updated `.env.example` with multi-process URLs
+- Updated documentation for new architecture
+
+### Architecture Evolution
+```
+v1.1 Single Process          v1.2 Multi-Process
+┌─────────────────┐         ┌─────────────────────────────┐
+│    Monolith     │   →     │ Gateway → LLM Service       │
+│  (all-in-one)   │         │        → Invest Capability  │
+│                 │         │        → Chat Capability    │
+│                 │         │        → Dev Capability     │
+└─────────────────┘         └─────────────────────────────┘
+```
+
+---
+
 ## [1.1.0] - 2026-03-18
 
 ### Added
@@ -95,6 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL dependency
 - Redis dependency
 - Password-based SMTP authentication
+
+---
 
 ## [0.1.0] - 2024-03-01
 

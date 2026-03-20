@@ -1,0 +1,338 @@
+# ============================================
+# InvestManager - Multi-Process Deployment
+# ============================================
+# This configuration runs InvestManager with separate services:
+# - Gateway: Receives Feishu webhooks, routes to capability services
+# - LLM: Unified LLM API with web search support
+# - Invest: Investment analysis capability
+# - Chat: General conversation with personalization
+# - Dev: Development mode with Claude Code
+#
+# Architecture:
+# ┌─────────────┐     ┌──────────────────────────────────────────────────────────────┐
+# │   Feishu    │────▶│                    GATEWAY (:8000)                           │
+# │   Webhook   │     │  - Webhook Handler    - LLM Proxy     - Capability Router   │
+# └─────────────┘     └───────────────────────────┬──────────────────────────────────┘
+#                                                 │
+#                     ┌───────────────────────────┼───────────────────────────┐
+#                     ▼                           ▼                           ▼
+#              ┌──────────────┐          ┌──────────────┐          ┌──────────────┐
+#              │ LLM SERVICE  │          │  INVEST      │          │   CHAT       │
+#              │   :8001      │          │  :8010       │          │   :8011      │
+#              │ - Providers  │          │ - Analysis   │          │ - Personalize│
+#              │ - Web Search │          │ - Backtest   │          │ - Learning   │
+#              └──────────────┘          └──────────────┘          └──────────────┘
+#                                                     │
+#                                                     ▼
+#                                             ┌──────────────┐
+#                                             │    DEV       │
+#                                             │   :8012      │
+#                                             │ - Claude Code│
+#                                             └──────────────┘
+#
+# Usage:
+#   docker-compose -f docker-compose.multiprocess.yml up -d
+# ============================================
+
+services:
+  # ==========================================
+  # Gateway Service
+  # ==========================================
+  # Receives Feishu webhooks and routes messages
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiprocess
+    image: investmanager:multiprocess
+    container_name: investmanager-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # Capability Service URLs
+      - INVEST_SERVICE_URL=http://invest:8010
+      - CHAT_SERVICE_URL=http://chat:8011
+      - DEV_SERVICE_URL=http://dev:8012
+      - LLM_SERVICE_URL=http://llm:8001
+
+      # Feishu
+      - FEISHU_ENABLED=${FEISHU_ENABLED:-true}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - FEISHU_ENCRYPT_KEY=${FEISHU_ENCRYPT_KEY:-}
+      - FEISHU_VERIFICATION_TOKEN=${FEISHU_VERIFICATION_TOKEN:-}
+
+    volumes:
+      - investmanager-data:/app/data
+      - investmanager-logs:/app/logs
+      - ./config:/app/config:ro
+
+    command: ["python", "-m", "services.gateway.main"]
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      llm:
+        condition: service_healthy
+      invest:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
+      dev:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ==========================================
+  # LLM Service
+  # ==========================================
+  # Unified LLM API with web search support
+  llm:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiprocess
+    image: investmanager:multiprocess
+    container_name: investmanager-llm
+    ports:
+      - "8001:8001"
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # LLM Provider
+      - LLM_PROVIDER=${LLM_PROVIDER:-alibaba_bailian}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ALIBABA_BAILIAN_API_KEY=${ALIBABA_BAILIAN_API_KEY:-}
+      - ALIBABA_BAILIAN_MODEL=${ALIBABA_BAILIAN_MODEL:-kimi-k2.5}
+
+      # Web Search
+      - WEB_SEARCH_ENABLED=${WEB_SEARCH_ENABLED:-true}
+      - WEB_SEARCH_ENGINE=${WEB_SEARCH_ENGINE:-duckduckgo}
+
+    volumes:
+      - investmanager-data:/app/data
+      - investmanager-logs:/app/logs
+      - ./config:/app/config:ro
+
+    command: ["python", "-m", "services.llm.main"]
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==========================================
+  # Invest Service
+  # ==========================================
+  # Investment analysis capability
+  invest:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiprocess
+    image: investmanager:multiprocess
+    container_name: investmanager-invest
+    ports:
+      - "8010:8010"
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # Gateway URL for LLM calls
+      - GATEWAY_URL=http://gateway:8000
+
+    volumes:
+      - investmanager-data:/app/data
+      - investmanager-logs:/app/logs
+      - ./config:/app/config:ro
+
+    command: ["python", "-m", "services.invest.main"]
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      llm:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ==========================================
+  # Chat Service
+  # ==========================================
+  # General conversation with personalization
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiprocess
+    image: investmanager:multiprocess
+    container_name: investmanager-chat
+    ports:
+      - "8011:8011"
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # Gateway URL for LLM calls
+      - GATEWAY_URL=http://gateway:8000
+
+    volumes:
+      - investmanager-data:/app/data
+      - investmanager-logs:/app/logs
+      - ./config:/app/config:ro
+
+    command: ["python", "-m", "services.chat.main"]
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      llm:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ==========================================
+  # Dev Service
+  # ==========================================
+  # Development mode with Claude Code
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiprocess
+    image: investmanager:multiprocess
+    container_name: investmanager-dev
+    ports:
+      - "8012:8012"
+    environment:
+      # Application
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database (SQLite)
+      - DATABASE_BACKEND=sqlite
+      - SQLITE_DB_PATH=/app/data/investmanager.db
+
+      # Claude Code (DEV mode)
+      - CLAUDE_CODE_ENABLED=${CLAUDE_CODE_ENABLED:-false}
+      - CLAUDE_CODE_WORKING_DIR=${CLAUDE_CODE_WORKING_DIR:-/app}
+
+    volumes:
+      - investmanager-data:/app/data
+      - investmanager-logs:/app/logs
+      - ./config:/app/config:ro
+
+    command: ["python", "-m", "services.dev.main"]
+    networks:
+      - investmanager-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  investmanager-data:
+    name: investmanager-multiprocess-data
+  investmanager-logs:
+    name: investmanager-multiprocess-logs
+
+networks:
+  investmanager-network:
+    name: investmanager-multiprocess-network
+    driver: bridge
