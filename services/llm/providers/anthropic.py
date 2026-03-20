@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from .base import LLMProvider, ChatRequest, ChatResponse
+from . import LLMProvider, ChatRequest, ChatResponse
 
 
 class AnthropicProvider(LLMProvider):

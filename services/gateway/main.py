@@ -165,41 +165,33 @@ class ServiceClient:
             self._client = None
 
 
-class CapabilityClient(ServiceClient):
-    """Client for communicating with capability services."""
+class CapabilityClient:
+    """Client for communicating with capability services using resilient requests."""
 
     def __init__(self, api_key: str = ""):
-        # Don't call super().__init__ with a single URL
         self.api_key = api_key
-        self._client: Optional[httpx.AsyncClient] = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            headers = {}
-            if self.api_key:
-                headers["X-Service-Key"] = self.api_key
-            self._client = httpx.AsyncClient(timeout=120.0, headers=headers)
-        return self._client
-
-    def _get_service_url(self, mode: str) -> str:
-        """Get service URL for a specific mode."""
-        return CAPABILITY_URLS.get(mode, INVEST_SERVICE_URL)
 
     async def handle_message(self, context: MessageContext) -> RouteResponse:
         """Route message to appropriate capability service based on mode."""
+        from services.service_registry import get_resilient_client
+
         mode = context.work_mode
-        url = self._get_service_url(mode)
-        client = await self._get_client()
         try:
+            client = get_resilient_client(mode)
             response = await client.post(
-                f"{url}/handle",
+                "/handle",
                 json=context.model_dump(),
             )
-            response.raise_for_status()
             data = response.json()
             return RouteResponse(**data)
+        except RuntimeError as e:
+            logger.error(f"Service {mode} unavailable: {e}")
+            return RouteResponse(
+                success=False,
+                message=f"服务暂时不可用，请稍后重试",
+            )
         except httpx.HTTPError as e:
-            logger.error(f"Failed to call {mode} capability service at {url}: {e}")
+            logger.error(f"Failed to call {mode} capability service: {e}")
             return RouteResponse(
                 success=False,
                 message=f"能力服务调用失败: {str(e)}",
@@ -280,19 +272,26 @@ class CapabilityClient(ServiceClient):
             )
 
 
-class LLMProxyClient(ServiceClient):
-    """Client for proxying requests to LLM service."""
+class LLMProxyClient:
+    """Client for proxying requests to LLM service with retry support."""
 
     async def chat(self, request: LLMChatRequest) -> dict:
         """Proxy chat request to LLM service."""
-        client = await self._get_client()
+        from services.service_registry import get_resilient_client
+
+        client = get_resilient_client("llm")
         try:
             response = await client.post(
-                f"{self.base_url}/chat",
+                "/chat",
                 json=request.model_dump(),
             )
-            response.raise_for_status()
             return response.json()
+        except RuntimeError as e:
+            logger.error(f"LLM proxy chat failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM service unavailable: {str(e)}",
+            )
         except httpx.HTTPError as e:
             logger.error(f"LLM proxy chat failed: {e}")
             raise HTTPException(
@@ -302,14 +301,21 @@ class LLMProxyClient(ServiceClient):
 
     async def parse_intent(self, request: LLMIntentRequest) -> dict:
         """Proxy intent parsing request to LLM service."""
-        client = await self._get_client()
+        from services.service_registry import get_resilient_client
+
+        client = get_resilient_client("llm")
         try:
             response = await client.post(
-                f"{self.base_url}/intent",
+                "/intent",
                 json=request.model_dump(),
             )
-            response.raise_for_status()
             return response.json()
+        except RuntimeError as e:
+            logger.error(f"LLM proxy intent failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM service unavailable: {str(e)}",
+            )
         except httpx.HTTPError as e:
             logger.error(f"LLM proxy intent failed: {e}")
             raise HTTPException(
@@ -319,14 +325,21 @@ class LLMProxyClient(ServiceClient):
 
     async def search(self, request: LLMSearchRequest) -> dict:
         """Proxy search request to LLM service."""
-        client = await self._get_client()
+        from services.service_registry import get_resilient_client
+
+        client = get_resilient_client("llm")
         try:
             response = await client.post(
-                f"{self.base_url}/search",
+                "/search",
                 json=request.model_dump(),
             )
-            response.raise_for_status()
             return response.json()
+        except RuntimeError as e:
+            logger.error(f"LLM proxy search failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM service unavailable: {str(e)}",
+            )
         except httpx.HTTPError as e:
             logger.error(f"LLM proxy search failed: {e}")
             raise HTTPException(
@@ -335,7 +348,7 @@ class LLMProxyClient(ServiceClient):
             )
 
 
-# Global clients
+# Global clients (lazy initialization)
 _capability_client: Optional[CapabilityClient] = None
 _llm_proxy_client: Optional[LLMProxyClient] = None
 
@@ -352,10 +365,7 @@ def get_llm_proxy_client() -> LLMProxyClient:
     """Get or create the LLM proxy client."""
     global _llm_proxy_client
     if _llm_proxy_client is None:
-        _llm_proxy_client = LLMProxyClient(
-            LLM_SERVICE_URL,
-            SERVICE_API_KEY,
-        )
+        _llm_proxy_client = LLMProxyClient()
     return _llm_proxy_client
 
 
@@ -448,10 +458,28 @@ HELP_TEXT = """
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("Starting Gateway Service...")
+
+    # Register services with the service registry
+    from services.service_registry import (
+        get_service_registry,
+        register_service,
+    )
+
+    # Register all services - they don't need to be up at startup
+    register_service("llm", LLM_SERVICE_URL)
+    register_service("invest", INVEST_SERVICE_URL)
+    register_service("chat", CHAT_SERVICE_URL)
+    register_service("dev", DEV_SERVICE_URL)
+
     logger.info(f"LLM Service URL: {LLM_SERVICE_URL}")
     logger.info(f"Invest Service URL: {INVEST_SERVICE_URL}")
     logger.info(f"Chat Service URL: {CHAT_SERVICE_URL}")
     logger.info(f"Dev Service URL: {DEV_SERVICE_URL}")
+
+    # Start health monitor (runs in background)
+    registry = get_service_registry()
+    await registry.start_health_monitor()
+    logger.info("Service health monitor started")
 
     # Initialize profile manager for mode persistence
     try:
@@ -473,10 +501,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("Shutting down Gateway Service...")
-    if _capability_client:
-        await _capability_client.close()
-    if _llm_proxy_client:
-        await _llm_proxy_client.close()
+    await registry.close()
 
 
 def create_app() -> FastAPI:
@@ -535,50 +560,25 @@ def register_routes(app: FastAPI):
     @app.get("/services")
     async def list_services():
         """List connected services and their status."""
+        from services.service_registry import get_service_registry, ServiceStatus
+
+        registry = get_service_registry()
         results = {}
-        client = await get_llm_proxy_client()._get_client()
 
-        # Check LLM service
-        try:
-            response = await client.get(f"{LLM_SERVICE_URL}/health")
-            results["llm"] = {
-                "url": LLM_SERVICE_URL,
-                "status": "healthy" if response.status_code == 200 else "unhealthy",
+        for name, endpoint in registry._services.items():
+            status = endpoint._status.value
+            results[name] = {
+                "url": endpoint.url,
+                "status": status,
+                "circuit_open": endpoint._circuit_open,
+                "failure_count": endpoint._failure_count,
             }
-        except Exception as e:
-            results["llm"] = {"url": LLM_SERVICE_URL, "status": "unreachable", "error": str(e)}
 
-        # Check Invest service
-        try:
-            response = await client.get(f"{INVEST_SERVICE_URL}/health")
-            results["invest"] = {
-                "url": INVEST_SERVICE_URL,
-                "status": "healthy" if response.status_code == 200 else "unhealthy",
-            }
-        except Exception as e:
-            results["invest"] = {"url": INVEST_SERVICE_URL, "status": "unreachable", "error": str(e)}
+        return {"services": results}
 
-        # Check Chat service
-        try:
-            response = await client.get(f"{CHAT_SERVICE_URL}/health")
-            results["chat"] = {
-                "url": CHAT_SERVICE_URL,
-                "status": "healthy" if response.status_code == 200 else "unhealthy",
-            }
-        except Exception as e:
-            results["chat"] = {"url": CHAT_SERVICE_URL, "status": "unreachable", "error": str(e)}
-
-        # Check Dev service
-        try:
-            response = await client.get(f"{DEV_SERVICE_URL}/health")
-            results["dev"] = {
-                "url": DEV_SERVICE_URL,
-                "status": "healthy" if response.status_code == 200 else "unhealthy",
-            }
-        except Exception as e:
-            results["dev"] = {"url": DEV_SERVICE_URL, "status": "unreachable", "error": str(e)}
-
-        return results
+    # ========================================
+    # LLM Proxy Routes
+    # ========================================
 
     # ========================================
     # LLM Proxy Endpoints (Internal Services)
@@ -642,6 +642,21 @@ def register_routes(app: FastAPI):
         This is the main entry point for all Feishu messages.
         """
         event = await request.json()
+        logger.info(f"Received webhook event: {json.dumps(event, ensure_ascii=False)[:500]}")
+
+        # Handle encrypted event
+        if "encrypt" in event:
+            from src.feishu.client import get_feishu_client
+            feishu_client = get_feishu_client()
+            if feishu_client:
+                try:
+                    decrypted = feishu_client.decrypt_event_data(event["encrypt"])
+                    event = json.loads(decrypted)
+                    logger.info(f"Decrypted event: {json.dumps(event, ensure_ascii=False)[:500]}")
+                except Exception as e:
+                    logger.error(f"Failed to decrypt event: {e}")
+                    return {"status": "decrypt_failed"}
+
         event_type = event.get("type") or event.get("header", {}).get("event_type")
 
         # URL verification

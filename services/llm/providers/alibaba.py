@@ -9,7 +9,7 @@ from typing import Optional
 
 from loguru import logger
 
-from .base import LLMProvider, ChatRequest, ChatResponse
+from . import LLMProvider, ChatRequest, ChatResponse
 
 
 class AlibabaBailianProvider(LLMProvider):

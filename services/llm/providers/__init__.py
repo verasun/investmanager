@@ -191,3 +191,13 @@ class LLMProviderFactory:
     def available_providers(cls) -> list[str]:
         """List available provider types."""
         return list(cls._providers.keys())
+
+
+# Register default providers
+from .alibaba import AlibabaBailianProvider
+from .openai import OpenAIProvider
+from .anthropic import AnthropicProvider
+
+LLMProviderFactory.register("alibaba_bailian", AlibabaBailianProvider)
+LLMProviderFactory.register("openai", OpenAIProvider)
+LLMProviderFactory.register("anthropic", AnthropicProvider)
