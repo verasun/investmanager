@@ -3,19 +3,29 @@
 
 This service acts as the entry point for Feishu messages,
 routing them to the appropriate capability service based on
-the user's work mode, and proxying LLM requests.
+intent parsing, and proxying LLM requests.
 
 Architecture:
-┌─────────────┐     ┌──────────────┐     ┌──────────────────┐
-│   Feishu    │────▶│   Gateway    │────▶│   LLM Service    │
-│   Webhook   │     │   :8000      │     │   :8001          │
-└─────────────┘     └──────────────┘     └──────────────────┘
-                           │
-                           ▼
-                    ┌──────────────────┐
-                    │ Capability Svc   │
-                    │   :8002          │
-                    └──────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              GATEWAY (:8000)                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────────┐ │
+│  │  Registry   │  │ Intent      │  │  LLM        │  │  Capability   │ │
+│  │  Manager    │  │ Router      │  │  Proxy      │  │  Router       │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └───────────────┘ │
+│         ▲                │                                 │           │
+│         │                ▼                                 ▼           │
+│  ┌──────┴──────┐  ┌─────────────┐                  ┌───────────────┐  │
+│  │  Service    │  │ LLM Service │                  │ Capability    │  │
+│  │  Registry   │  │   :8001     │                  │ Services      │  │
+│  └─────────────┘  └─────────────┘                  └───────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
+         ▲                                                       ▲
+         │ REGISTER                                               │ HANDLE
+         │                                                        │
+┌────────┴────────┐  ┌────────────────┐  ┌────────────────┐  ┌────┴───────┐
+│ Invest Service  │  │  Chat Service  │  │  Dev Service   │  │  Future    │
+│    :8010        │  │    :8011       │  │    :8012       │  │  Services  │
+└─────────────────┘  └────────────────┘  └────────────────┘  └────────────┘
 """
 
 import argparse
@@ -38,6 +48,22 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import settings
+from services.capability_protocol import (
+    CapabilityInfo,
+    RegisterRequest,
+    RegisterResponse,
+    UnregisterRequest,
+    UnregisterResponse,
+    HeartbeatRequest,
+    HeartbeatResponse,
+    ForcedModeRequest,
+    ForcedModeResponse,
+    ServiceListResponse,
+    CapabilityListResponse,
+    IntentParseRequest,
+    IntentParseResponse,
+)
+from services.gateway.help_system import get_help_manager, HelpCategory
 
 
 # ============================================
@@ -141,6 +167,10 @@ class MessageContext(BaseModel):
     message_id: str
     raw_text: str
     work_mode: str = "invest"
+    # 链路追踪字段
+    trace_id: Optional[str] = None  # 链路追踪ID
+    source: str = "feishu"          # 请求来源
+    timestamp: Optional[float] = None  # 请求时间戳(unix ms)
 
 
 class RouteRequest(BaseModel):
@@ -215,20 +245,40 @@ class ServiceClient:
 
 
 class CapabilityClient:
-    """Client for communicating with capability services using resilient requests."""
+    """Client for communicating with capability services using registry."""
 
     def __init__(self, api_key: str = ""):
         self.api_key = api_key
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            headers = {}
+            if self.api_key:
+                headers["X-Service-Key"] = self.api_key
+            self._client = httpx.AsyncClient(timeout=60.0, headers=headers)
+        return self._client
+
+    async def _get_service_url(self, service_id: str) -> str:
+        """Get service URL from registry."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        service = registry.get_service(service_id)
+        if service:
+            return service.base_url
+        raise RuntimeError(f"Service '{service_id}' not registered")
 
     async def handle_message(self, context: MessageContext) -> RouteResponse:
         """Route message to appropriate capability service based on mode."""
-        from services.service_registry import get_resilient_client
+        from services.gateway.registry import get_registry_manager
 
         mode = context.work_mode
         try:
-            client = get_resilient_client(mode)
+            base_url = await self._get_service_url(mode)
+            client = await self._get_client()
             response = await client.post(
-                "/handle",
+                f"{base_url}/handle",
                 json=context.model_dump(),
             )
             data = response.json()
@@ -324,16 +374,39 @@ class CapabilityClient:
 class LLMProxyClient:
     """Client for proxying requests to LLM service with retry support."""
 
+    def __init__(self):
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=60.0)
+        return self._client
+
+    async def _get_service_url(self) -> str:
+        """Get LLM service URL from registry."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        service = registry.get_service("llm")
+        if service:
+            return service.base_url
+        raise RuntimeError("Service 'llm' not registered")
+
+    async def close(self):
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
     async def chat(self, request: LLMChatRequest) -> dict:
         """Proxy chat request to LLM service."""
-        from services.service_registry import get_resilient_client
-
-        client = get_resilient_client("llm")
         try:
+            base_url = await self._get_service_url()
+            client = await self._get_client()
             response = await client.post(
-                "/chat",
+                f"{base_url}/chat",
                 json=request.model_dump(),
             )
+            response.raise_for_status()
             return response.json()
         except RuntimeError as e:
             logger.error(f"LLM proxy chat failed: {e}")
@@ -350,14 +423,14 @@ class LLMProxyClient:
 
     async def parse_intent(self, request: LLMIntentRequest) -> dict:
         """Proxy intent parsing request to LLM service."""
-        from services.service_registry import get_resilient_client
-
-        client = get_resilient_client("llm")
         try:
+            base_url = await self._get_service_url()
+            client = await self._get_client()
             response = await client.post(
-                "/intent",
+                f"{base_url}/intent",
                 json=request.model_dump(),
             )
+            response.raise_for_status()
             return response.json()
         except RuntimeError as e:
             logger.error(f"LLM proxy intent failed: {e}")
@@ -374,14 +447,14 @@ class LLMProxyClient:
 
     async def search(self, request: LLMSearchRequest) -> dict:
         """Proxy search request to LLM service."""
-        from services.service_registry import get_resilient_client
-
-        client = get_resilient_client("llm")
         try:
+            base_url = await self._get_service_url()
+            client = await self._get_client()
             response = await client.post(
-                "/search",
+                f"{base_url}/search",
                 json=request.model_dump(),
             )
+            response.raise_for_status()
             return response.json()
         except RuntimeError as e:
             logger.error(f"LLM proxy search failed: {e}")
@@ -446,6 +519,11 @@ class CommandType:
     MODE_SWITCH = "mode_switch"
     MODE_STATUS = "mode_status"
     HELP = "help"
+    HELP_TOPIC = "help_topic"
+    GUIDE = "guide"
+    QUICK_START = "quick_start"
+    TIPS = "tips"
+    FAQ = "faq"
 
 
 def parse_command(text: str) -> tuple[str, dict[str, Any]]:
@@ -455,24 +533,46 @@ def parse_command(text: str) -> tuple[str, dict[str, Any]]:
         Tuple of (command_type, params)
     """
     import re
-    text = text.strip().lower()
+    text_lower = text.strip().lower()
+    text_original = text.strip()
 
     # Mode switch patterns
-    if re.match(r"切换模式", text):
+    if re.match(r"切换模式", text_lower):
         return CommandType.MODE_SWITCH, {}
-    if re.match(r"切换到投资模式", text) or re.match(r"切换到invest", text):
+    if re.match(r"切换到投资模式", text_lower) or re.match(r"切换到invest", text_lower):
         return CommandType.MODE_SWITCH, {"target_mode": "invest"}
-    if re.match(r"切换到对话模式", text) or re.match(r"切换到chat", text):
+    if re.match(r"切换到对话模式", text_lower) or re.match(r"切换到chat", text_lower):
         return CommandType.MODE_SWITCH, {"target_mode": "chat"}
-    if re.match(r"切换到开发模式", text) or re.match(r"切换到dev", text):
+    if re.match(r"切换到开发模式", text_lower) or re.match(r"切换到dev", text_lower):
         return CommandType.MODE_SWITCH, {"target_mode": "dev"}
 
     # Mode status
-    if re.match(r"当前模式", text) or re.match(r"什么模式", text):
+    if re.match(r"当前模式", text_lower) or re.match(r"什么模式", text_lower):
         return CommandType.MODE_STATUS, {}
 
+    # Help with topic: 帮助 xxx
+    help_match = re.match(r"帮助\s+(.+)", text_lower)
+    if help_match:
+        return CommandType.HELP_TOPIC, {"topic": help_match.group(1).strip()}
+
+    # Quick start guide
+    if re.match(r"快速开始|新手引导|入门", text_lower):
+        return CommandType.QUICK_START, {}
+
+    # Interactive guide
+    if re.match(r"引导|功能引导|功能介绍", text_lower):
+        return CommandType.GUIDE, {}
+
+    # Tips
+    if re.match(r"小技巧|提示|技巧", text_lower):
+        return CommandType.TIPS, {}
+
+    # FAQ
+    if re.match(r"常见问题|faq|问题列表", text_lower):
+        return CommandType.FAQ, {}
+
     # Help
-    if re.match(r"帮助|help|\?", text):
+    if re.match(r"帮助|help|\?", text_lower):
         return CommandType.HELP, {}
 
     return "unknown", {}
@@ -508,25 +608,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("Starting Gateway Service...")
 
-    # Register services with the service registry
-    from services.service_registry import (
-        get_service_registry,
-        register_service,
-    )
+    # Initialize the new registry manager
+    from services.gateway.registry import get_registry_manager
 
-    # Register all services - they don't need to be up at startup
-    register_service("llm", LLM_SERVICE_URL)
-    register_service("invest", INVEST_SERVICE_URL)
-    register_service("chat", CHAT_SERVICE_URL)
-    register_service("dev", DEV_SERVICE_URL)
-
-    logger.info(f"LLM Service URL: {LLM_SERVICE_URL}")
-    logger.info(f"Invest Service URL: {INVEST_SERVICE_URL}")
-    logger.info(f"Chat Service URL: {CHAT_SERVICE_URL}")
-    logger.info(f"Dev Service URL: {DEV_SERVICE_URL}")
+    registry = get_registry_manager()
 
     # Start health monitor (runs in background)
-    registry = get_service_registry()
     await registry.start_health_monitor()
     logger.info("Service health monitor started")
 
@@ -546,11 +633,21 @@ async def lifespan(app: FastAPI):
         if client:
             logger.info("Feishu client initialized")
 
+    # Initialize intent router
+    from services.gateway.intent_router import get_intent_router
+    get_intent_router()
+    logger.info("Intent router initialized")
+
     yield
 
     # Cleanup
     logger.info("Shutting down Gateway Service...")
     await registry.close()
+
+    # Close intent router
+    from services.gateway.intent_router import get_intent_router
+    router = get_intent_router()
+    await router.close()
 
 
 def create_app() -> FastAPI:
@@ -609,21 +706,263 @@ def register_routes(app: FastAPI):
     @app.get("/services")
     async def list_services():
         """List connected services and their status."""
-        from services.service_registry import get_service_registry, ServiceStatus
+        from services.gateway.registry import get_registry_manager
 
-        registry = get_service_registry()
+        registry = get_registry_manager()
+        response = registry.list_services()
+
         results = {}
-
-        for name, endpoint in registry._services.items():
-            status = endpoint._status.value
-            results[name] = {
-                "url": endpoint.url,
-                "status": status,
-                "circuit_open": endpoint._circuit_open,
-                "failure_count": endpoint._failure_count,
+        for service in response.services:
+            results[service.service_id] = {
+                "name": service.service_name,
+                "url": service.base_url,
+                "status": service.status.value,
+                "version": service.version,
+                "registered_at": service.registered_at.isoformat() if service.registered_at else None,
             }
 
-        return {"services": results}
+        return {"services": results, "total": response.total}
+
+    # ========================================
+    # Registry API Endpoints
+    # ========================================
+
+    @app.post("/registry/register", response_model=RegisterResponse)
+    async def register_service(request: RegisterRequest):
+        """Register a service capability.
+
+        Services call this endpoint to register their capabilities.
+        """
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return await registry.register(request)
+
+    @app.post("/registry/unregister", response_model=UnregisterResponse)
+    async def unregister_service(request: UnregisterRequest):
+        """Unregister a service capability."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return await registry.unregister(request)
+
+    @app.post("/registry/heartbeat", response_model=HeartbeatResponse)
+    async def service_heartbeat(request: HeartbeatRequest):
+        """Process heartbeat from a registered service."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return await registry.heartbeat(request)
+
+    @app.get("/registry/capabilities")
+    async def list_capabilities():
+        """List all available capabilities across services."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return registry.list_capabilities()
+
+    @app.get("/registry/description")
+    async def get_capability_description():
+        """Get capability description for LLM prompt."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return {"description": registry.get_capability_description()}
+
+    # ========================================
+    # Intent Parsing Endpoints
+    # ========================================
+
+    @app.post("/intent/parse", response_model=IntentParseResponse)
+    async def parse_intent(request: IntentParseRequest):
+        """Parse user intent and determine routing.
+
+        Uses LLM to determine which service should handle the message.
+        """
+        from services.gateway.registry import get_registry_manager
+        from services.gateway.intent_router import get_intent_router
+
+        registry = get_registry_manager()
+        router = get_intent_router()
+
+        # Check for forced mode
+        if request.user_id:
+            forced_service = registry.get_forced_mode(request.user_id)
+            if forced_service:
+                request.force_service = forced_service
+
+        # Get available capabilities
+        capabilities = {
+            service_id: service
+            for service_id, service in registry._capabilities.items()
+        }
+
+        return await router.parse_intent(request, capabilities)
+
+    # ========================================
+    # Forced Mode Endpoints
+    # ========================================
+
+    @app.post("/forced-mode", response_model=ForcedModeResponse)
+    async def set_forced_mode(request: ForcedModeRequest):
+        """Set or clear forced mode for a user.
+
+        When forced mode is set, all messages from that user will be
+        routed to the specified service, bypassing intent parsing.
+        """
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        return registry.set_forced_mode(request)
+
+    @app.get("/forced-mode/{user_id}")
+    async def get_forced_mode(user_id: str):
+        """Get forced mode for a user."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        service_id = registry.get_forced_mode(user_id)
+
+        return {
+            "user_id": user_id,
+            "forced_mode": service_id,
+            "is_forced": service_id is not None,
+        }
+
+    @app.delete("/forced-mode/{user_id}")
+    async def clear_forced_mode(user_id: str):
+        """Clear forced mode for a user."""
+        from services.gateway.registry import get_registry_manager
+
+        registry = get_registry_manager()
+        cleared = registry.clear_forced_mode(user_id)
+
+        return {
+            "user_id": user_id,
+            "cleared": cleared,
+        }
+
+    # ========================================
+    # Help System Endpoints
+    # ========================================
+
+    @app.get("/help")
+    async def get_help_menu():
+        """Get help menu."""
+        from services.gateway.help_system import get_help_manager
+
+        help_manager = get_help_manager()
+        return {
+            "menu": help_manager.format_help_menu(),
+            "categories": [
+                {"id": "general", "name": "通用"},
+                {"id": "invest", "name": "投资分析"},
+                {"id": "chat", "name": "对话聊天"},
+                {"id": "dev", "name": "开发模式"},
+                {"id": "system", "name": "系统功能"},
+            ],
+        }
+
+    @app.get("/help/{help_id}")
+    async def get_help_content(help_id: str):
+        """Get specific help content."""
+        from services.gateway.help_system import get_help_manager
+
+        help_manager = get_help_manager()
+        content = help_manager.get_store().get(help_id)
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Help content not found")
+
+        return {
+            "id": content.id,
+            "title": content.title,
+            "description": content.description,
+            "type": content.help_type.value,
+            "category": content.category.value,
+            "formatted": help_manager.format_help(content),
+        }
+
+    @app.get("/help/search/{query}")
+    async def search_help(query: str):
+        """Search help content."""
+        from services.gateway.help_system import get_help_manager
+
+        help_manager = get_help_manager()
+        results = help_manager.get_store().search(query)
+
+        return {
+            "query": query,
+            "results": [
+                {
+                    "id": r.content.id,
+                    "title": r.content.title,
+                    "relevance": r.relevance,
+                }
+                for r in results
+            ],
+        }
+
+    @app.get("/help/category/{category}")
+    async def get_help_by_category(category: str):
+        """Get help content by category."""
+        from services.gateway.help_system import get_help_manager, HelpCategory
+
+        help_manager = get_help_manager()
+
+        try:
+            cat = HelpCategory(category)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+
+        contents = help_manager.get_store().get_by_category(cat)
+
+        return {
+            "category": category,
+            "contents": [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "description": c.description,
+                }
+                for c in contents
+            ],
+        }
+
+    @app.get("/quick-start")
+    async def get_quick_start():
+        """Get quick start guide."""
+        from services.gateway.help_system import get_help_manager
+
+        help_manager = get_help_manager()
+        content = help_manager.get_store().get("quick_start")
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Quick start guide not found")
+
+        return {
+            "formatted": help_manager.format_help(content),
+            "steps": [
+                {
+                    "step": s.step_number,
+                    "title": s.title,
+                    "description": s.description,
+                    "example": s.example,
+                }
+                for s in content.steps
+            ],
+        }
+
+    @app.get("/tips")
+    async def get_tips():
+        """Get quick tips."""
+        from services.gateway.help_system import get_help_manager
+
+        help_manager = get_help_manager()
+        return {
+            "tips": help_manager.format_quick_tips(),
+        }
 
     # ========================================
     # LLM Proxy Routes
@@ -721,7 +1060,14 @@ def register_routes(app: FastAPI):
 
     async def handle_message_event(event: dict) -> dict:
         """Handle incoming message event."""
+        import uuid
+        import time as time_module
         from src.feishu.client import get_feishu_client
+        from services.gateway.registry import get_registry_manager
+        from services.gateway.intent_router import get_intent_router
+
+        # Generate trace_id for this request
+        trace_id = f"req_{uuid.uuid4().hex[:16]}_{int(time_module.time()*1000)}"
 
         event_data = event.get("event", {})
         message = event_data.get("message", {})
@@ -757,67 +1103,293 @@ def register_routes(app: FastAPI):
         if not text:
             return {"status": "ok"}
 
-        logger.info(f"Message from {user_id}: {text[:50]}...")
-
-        # Get capability client
-        capability_client = get_capability_client()
+        logger.info(f"[{trace_id}] Message from {user_id}: {text[:50]}...")
 
         # Parse command
         command_type, params = parse_command(text)
 
         # Handle help command directly
         if command_type == CommandType.HELP:
-            feishu_client = get_feishu_client()
-            if feishu_client:
-                await feishu_client.reply_message(message_id, HELP_TEXT)
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_manager = get_help_manager()
+                    help_text = help_manager.format_help_menu()
+                    await feishu_client.reply_message(message_id, help_text)
+            except Exception as e:
+                logger.error(f"Failed to handle help command: {e}")
             return {"status": "ok"}
 
-        # Handle mode commands
+        # Handle help topic: 帮助 xxx
+        if command_type == CommandType.HELP_TOPIC:
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_manager = get_help_manager()
+                    topic = params.get("topic", "")
+
+                    # First try to get by ID
+                    content = help_manager.get_store().get(topic)
+                    if content:
+                        help_text = help_manager.format_help(content)
+                    else:
+                        # Search by keyword
+                        results = help_manager.get_store().search(topic, limit=1)
+                        if results:
+                            help_text = help_manager.format_help(results[0].content)
+                        else:
+                            help_text = f"未找到关于「{topic}」的帮助内容。\n\n发送「帮助」查看所有帮助主题。"
+
+                    await feishu_client.reply_message(message_id, help_text)
+            except Exception as e:
+                logger.error(f"Failed to handle help topic command: {e}")
+            return {"status": "ok"}
+
+        # Handle quick start
+        if command_type == CommandType.QUICK_START:
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_manager = get_help_manager()
+                    content = help_manager.get_store().get("quick_start")
+                    if content:
+                        help_text = help_manager.format_help(content)
+                        help_manager.mark_help_viewed(user_id, "quick_start")
+                        await feishu_client.reply_message(message_id, help_text)
+            except Exception as e:
+                logger.error(f"Failed to handle quick start command: {e}")
+            return {"status": "ok"}
+
+        # Handle interactive guide
+        if command_type == CommandType.GUIDE:
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_text = """🎯 **功能引导**
+
+选择您想了解的功能：
+
+**投资分析**
+• 发送「帮助 invest_guide」了解股票分析功能
+• 发送「帮助 stock_analysis」学习股票分析步骤
+
+**对话模式**
+• 发送「帮助 chat_guide」了解对话功能
+
+**开发模式**
+• 发送「帮助 dev_guide」了解代码助手功能
+
+**系统功能**
+• 发送「帮助 mode_switch」了解模式切换
+• 发送「帮助 profile_guide」了解个性化功能
+
+💡 或者发送「快速开始」开始新手教程"""
+                    await feishu_client.reply_message(message_id, help_text)
+            except Exception as e:
+                logger.error(f"Failed to handle guide command: {e}")
+            return {"status": "ok"}
+
+        # Handle tips
+        if command_type == CommandType.TIPS:
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_manager = get_help_manager()
+                    tips_text = help_manager.format_quick_tips()
+                    await feishu_client.reply_message(message_id, tips_text)
+            except Exception as e:
+                logger.error(f"Failed to handle tips command: {e}")
+            return {"status": "ok"}
+
+        # Handle FAQ
+        if command_type == CommandType.FAQ:
+            try:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    help_manager = get_help_manager()
+                    content = help_manager.get_store().get("faq_general")
+                    if content:
+                        help_text = help_manager.format_help(content)
+                        await feishu_client.reply_message(message_id, help_text)
+            except Exception as e:
+                logger.error(f"Failed to handle FAQ command: {e}")
+            return {"status": "ok"}
+
+        # Handle mode/status commands (legacy compatibility)
         if command_type == CommandType.MODE_STATUS:
-            result = await capability_client.get_mode(user_id)
-            mode_name = {"invest": "投资助手", "chat": "通用对话", "dev": "开发模式"}.get(result, result)
-            reply = f"当前模式：「{mode_name}」"
-            feishu_client = get_feishu_client()
-            if feishu_client:
-                await feishu_client.reply_message(message_id, reply)
+            try:
+                # Check forced mode first
+                registry = get_registry_manager()
+                forced_service = registry.get_forced_mode(user_id)
+                if forced_service:
+                    service = registry.get_service(forced_service)
+                    mode_name = service.service_name if service else forced_service
+                    reply = f"当前强制模式：「{mode_name}」"
+                else:
+                    # Fall back to work mode
+                    capability_client = get_capability_client()
+                    result = await capability_client.get_mode(user_id)
+                    mode_name = {"invest": "投资助手", "chat": "通用对话", "dev": "开发模式"}.get(result, result)
+                    reply = f"当前模式：「{mode_name}」(智能路由)"
+
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    await feishu_client.reply_message(message_id, reply)
+            except Exception as e:
+                logger.error(f"Failed to handle mode status command: {e}")
             return {"status": "ok"}
 
         if command_type == CommandType.MODE_SWITCH:
-            target_mode = params.get("target_mode")
-            if target_mode:
-                result = await capability_client.set_mode(user_id, target_mode)
-            else:
-                # Cycle mode using the new cycle_mode method
-                result = await capability_client.cycle_mode(user_id)
+            try:
+                registry = get_registry_manager()
+                target_mode = params.get("target_mode")
 
-            feishu_client = get_feishu_client()
-            if feishu_client and result.mode:
-                await feishu_client.reply_message(message_id, result.message)
+                if target_mode:
+                    # Set forced mode for specific service
+                    result = registry.set_forced_mode(ForcedModeRequest(
+                        user_id=user_id,
+                        service_id=target_mode,
+                    ))
+                else:
+                    # Clear forced mode to enable smart routing
+                    result = registry.set_forced_mode(ForcedModeRequest(
+                        user_id=user_id,
+                        service_id=None,
+                    ))
+
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    await feishu_client.reply_message(message_id, result.message)
+            except Exception as e:
+                logger.error(f"Failed to handle mode switch command: {e}")
             return {"status": "ok"}
 
-        # Get user's current mode
-        work_mode = await capability_client.get_mode(user_id)
-        logger.info(f"User {user_id} mode: {work_mode}")
+        # Check for "使用xxx模块" command for forced mode
+        import re
+        force_match = re.match(r"使用\s*(\w+)\s*模块?", text.lower())
+        if force_match:
+            try:
+                target_service = force_match.group(1)
+                registry = get_registry_manager()
+                result = registry.set_forced_mode(ForcedModeRequest(
+                    user_id=user_id,
+                    service_id=target_service,
+                ))
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    await feishu_client.reply_message(message_id, result.message)
+            except Exception as e:
+                logger.error(f"Failed to handle force module command: {e}")
+            return {"status": "ok"}
 
-        # Create message context
-        context = MessageContext(
-            user_id=user_id,
-            chat_id=chat_id,
-            message_id=message_id,
-            raw_text=text,
-            work_mode=work_mode,
-        )
+        # Route message using intent router
+        try:
+            registry = get_registry_manager()
+            router = get_intent_router()
 
-        # Route to capability service
-        result = await capability_client.handle_message(context)
+            # Check forced mode first
+            forced_service = registry.get_forced_mode(user_id)
 
-        # Send reply
-        if result.should_reply and result.message:
-            feishu_client = get_feishu_client()
-            if feishu_client:
-                await feishu_client.reply_message(message_id, result.message)
+            # Build intent parse request
+            intent_request = IntentParseRequest(
+                user_message=text,
+                user_id=user_id,
+                force_service=forced_service,
+            )
+
+            # Get available capabilities
+            capabilities = dict(registry._capabilities)
+
+            # Parse intent
+            intent_response = await router.parse_intent(intent_request, capabilities)
+
+            if not intent_response.service_id:
+                # No service available
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    await feishu_client.reply_message(
+                        message_id,
+                        "抱歉，当前没有可用的服务来处理您的请求。"
+                    )
+                return {"status": "ok"}
+
+            logger.info(
+                f"Routing message to {intent_response.service_id} "
+                f"(confidence: {intent_response.confidence:.2f})"
+            )
+
+            # Check if user is new and should see proactive help
+            help_manager = get_help_manager()
+            is_new_user = help_manager.is_new_user(user_id)
+
+            # Get the target service
+            target_service = registry.get_service(intent_response.service_id)
+            if not target_service:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    await feishu_client.reply_message(
+                        message_id,
+                        f"服务 '{intent_response.service_id}' 暂时不可用。"
+                    )
+                return {"status": "ok"}
+
+            # Create message context for the service
+            context = MessageContext(
+                user_id=user_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                raw_text=text,
+                work_mode=intent_response.service_id,  # Use service_id as work_mode
+                trace_id=trace_id,
+                source="feishu",
+                timestamp=time_module.time() * 1000,
+            )
+
+            # Call the target service
+            capability_client = get_capability_client()
+            logger.info(f"[{trace_id}] -> {intent_response.service_id} /handle")
+            result = await capability_client.handle_message(context)
+            logger.info(f"[{trace_id}] <- {intent_response.service_id} success={result.success}, len={len(result.message) if result.message else 0}")
+
+            # Send reply with optional proactive help for new users
+            if result.should_reply and result.message:
+                feishu_client = get_feishu_client()
+                if feishu_client:
+                    reply_text = result.message
+
+                    # Append help tip for new users
+                    if is_new_user:
+                        help_tip = "\n\n---\n💡 **新手提示：** 发送「帮助」或「快速开始」了解更多功能！"
+                        reply_text += help_tip
+                        help_manager.mark_help_viewed(user_id, "quick_start")
+
+                    await feishu_client.reply_message(message_id, reply_text)
+                    logger.info(f"[{trace_id}] -> feishu reply sent")
+
+        except Exception as e:
+            logger.error(f"[{trace_id}] Failed to route message: {e}")
 
         return {"status": "ok"}
+
+    def _build_help_text(registry) -> str:
+        """Build dynamic help text based on registered services."""
+        services_desc = registry.get_capability_description()
+
+        return f"""📈 InvestManager 机器人使用指南
+
+🔄 工作模式:
+  切换模式  - 切换到智能路由模式
+  切换到投资模式 / 切换到invest - 强制使用投资服务
+  切换到对话模式 / 切换到chat - 强制使用对话服务
+  切换到开发模式 / 切换到dev - 强制使用开发服务
+  使用 <模块名> 模块 - 强制指定模块
+  当前模式  - 查看当前模式
+
+{services_desc}
+
+❓ 帮助:
+  帮助  - 显示此帮助信息
+""".strip()
 
     # ========================================
     # Mode Management

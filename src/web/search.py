@@ -158,7 +158,9 @@ class WebSearcher:
 
         except Exception as e:
             logger.error(f"DuckDuckGo search error: {e}")
-            return SearchResponse(query=query, error=str(e))
+            # Fallback to HTTP API
+            logger.info("Falling back to DuckDuckGo HTTP API")
+            return await self._search_duckduckgo_http(query, max_results)
 
     async def _search_duckduckgo_http(self, query: str, max_results: int) -> SearchResponse:
         """Fallback HTTP-based DuckDuckGo search.

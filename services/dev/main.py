@@ -9,6 +9,9 @@ Architecture:
 │   Gateway   │────▶│  Dev Service │────▶│   Claude Code    │
 │   :8000     │     │   :8012       │     │   CLI            │
 └─────────────┘     └──────────────┘     └──────────────────┘
+
+Registration:
+This service registers its capabilities with the Gateway on startup.
 """
 
 import argparse
@@ -31,6 +34,14 @@ from config.settings import settings
 
 
 # ============================================
+# Configuration
+# ============================================
+
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
+SERVICE_PORT = int(os.getenv("SERVICE_PORT", "8012"))
+
+
+# ============================================
 # Models
 # ============================================
 
@@ -41,6 +52,10 @@ class MessageContext(BaseModel):
     message_id: str
     raw_text: str
     work_mode: str = "dev"
+    # 链路追踪字段
+    trace_id: Optional[str] = None
+    source: str = "feishu"
+    timestamp: Optional[float] = None
 
 
 class HandleResponse(BaseModel):
@@ -180,8 +195,9 @@ class DevService:
         """Handle development mode message."""
         user_id = context.user_id
         text = context.raw_text
+        trace_id = context.trace_id or "no-trace"
 
-        logger.info(f"DevService: {text[:50]}... from {user_id}")
+        logger.info(f"[{trace_id}] DevService: {text[:50]}... from {user_id}")
 
         if not settings.claude_code_enabled:
             return HandleResponse(
@@ -190,7 +206,9 @@ class DevService:
             )
 
         # Execute via Claude Code
+        logger.info(f"[{trace_id}] -> claude_code execute")
         result = await self.executor.execute(text)
+        logger.info(f"[{trace_id}] <- claude_code success={result.success}")
 
         if result.success:
             # Truncate very long outputs
@@ -244,9 +262,33 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Claude Code is not enabled")
 
+    # Register with Gateway
+    from services.registration import ServiceRegistrar
+    from services.capability_protocol import get_dev_capability
+
+    capability = get_dev_capability()
+    capability.base_url = f"http://localhost:{SERVICE_PORT}"
+
+    registrar = ServiceRegistrar(
+        gateway_url=GATEWAY_URL,
+        capability=capability,
+        retry_count=5,
+        retry_delay=2.0,
+    )
+
+    registered = await registrar.register()
+    if registered:
+        logger.info("Successfully registered with Gateway")
+    else:
+        logger.warning("Failed to register with Gateway, continuing anyway")
+
     yield
 
+    # Cleanup
     logger.info("Shutting down Dev Service...")
+
+    # Unregister from Gateway
+    await registrar.unregister()
 
 
 def create_app() -> FastAPI:

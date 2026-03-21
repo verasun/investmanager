@@ -13,17 +13,21 @@ class ProviderType(str, Enum):
     ALIBABA_BAILIAN = "alibaba_bailian"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    MULTI_MODEL = "multi_model"  # Multi-model with intelligent routing
 
 
 class ChatRequest(BaseModel):
     """Request for LLM chat completion."""
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]  # Support tool_calls with content=None
     system_prompt: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 800
     user_id: Optional[str] = None
     tools: Optional[list[dict]] = None
     tool_choice: str = "auto"
+    # Multi-model support
+    task_type: str = "text"  # text, deep_thinking, visual, coding
+    trace_id: Optional[str] = None  # For tracking and scoring
 
 
 class ChatResponse(BaseModel):
@@ -197,7 +201,9 @@ class LLMProviderFactory:
 from .alibaba import AlibabaBailianProvider
 from .openai import OpenAIProvider
 from .anthropic import AnthropicProvider
+from .multi_model import MultiModelProvider
 
 LLMProviderFactory.register("alibaba_bailian", AlibabaBailianProvider)
 LLMProviderFactory.register("openai", OpenAIProvider)
 LLMProviderFactory.register("anthropic", AnthropicProvider)
+LLMProviderFactory.register("multi_model", MultiModelProvider)

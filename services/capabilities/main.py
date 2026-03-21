@@ -55,6 +55,10 @@ class MessageContext(BaseModel):
     message_id: str
     raw_text: str
     work_mode: str = "invest"
+    # 链路追踪字段
+    trace_id: Optional[str] = None
+    source: str = "feishu"
+    timestamp: Optional[float] = None
 
 
 class HandleResponse(BaseModel):

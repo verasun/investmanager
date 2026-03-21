@@ -9,6 +9,9 @@ Architecture:
 │   Gateway   │────▶│ Invest Service│────▶│   LLM Service    │
 │   :8000     │     │   :8010       │     │   (via Gateway)  │
 └─────────────┘     └──────────────┘     └──────────────────┘
+
+Registration:
+This service registers its capabilities with the Gateway on startup.
 """
 
 import argparse
@@ -37,6 +40,7 @@ from config.settings import settings
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
 SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "")
+SERVICE_PORT = int(os.getenv("SERVICE_PORT", "8010"))
 
 
 # ============================================
@@ -50,6 +54,10 @@ class MessageContext(BaseModel):
     message_id: str
     raw_text: str
     work_mode: str = "invest"
+    # 链路追踪字段
+    trace_id: Optional[str] = None
+    source: str = "feishu"
+    timestamp: Optional[float] = None
 
 
 class HandleResponse(BaseModel):
@@ -104,9 +112,12 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         user_id: Optional[str] = None,
         enable_web_search: bool = True,
+        trace_id: Optional[str] = None,
     ) -> str:
         """Call LLM chat through Gateway."""
+        import time as time_module
         client = await self._get_client()
+        tid = trace_id or "no-trace"
 
         payload = {
             "messages": messages,
@@ -116,15 +127,20 @@ class LLMClient:
         }
 
         try:
+            logger.info(f"[{tid}] -> gateway /llm/chat")
+            start_time = time_module.time()
             response = await client.post(
                 f"{self.gateway_url}/llm/chat",
                 json=payload,
             )
+            duration_ms = (time_module.time() - start_time) * 1000
             response.raise_for_status()
             data = response.json()
+            content_len = len(data.get('content', ''))
+            logger.info(f"[{tid}] <- gateway /llm/chat status={response.status_code} len={content_len} ({duration_ms:.0f}ms)")
             return data.get("content", "")
         except httpx.HTTPError as e:
-            logger.error(f"LLM chat failed: {e}")
+            logger.error(f"[{tid}] LLM chat failed: {e}")
             raise
 
     async def parse_intent(self, message: str) -> dict:
@@ -308,8 +324,9 @@ class InvestService:
         """Handle investment-focused message."""
         user_id = context.user_id
         text = context.raw_text
+        trace_id = context.trace_id or "no-trace"
 
-        logger.info(f"InvestService: {text[:50]}... from {user_id}")
+        logger.info(f"[{trace_id}] InvestService: {text[:50]}... from {user_id}")
 
         # Check for learning response first
         learning_result = await self.personalization.handle_learning_response(
@@ -338,6 +355,7 @@ class InvestService:
                 system_prompt=system_prompt,
                 user_id=user_id,
                 enable_web_search=True,
+                trace_id=trace_id,
             )
 
             # Append learning task if present
@@ -358,7 +376,7 @@ class InvestService:
             )
 
         except Exception as e:
-            logger.error(f"InvestService error: {e}")
+            logger.error(f"[{trace_id}] InvestService error: {e}")
             return HandleResponse(
                 success=False,
                 message=f"处理消息时出错: {str(e)}",
@@ -396,11 +414,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize profile manager: {e}")
 
+    # Register with Gateway
+    from services.registration import ServiceRegistrar
+    from services.capability_protocol import get_invest_capability
+
+    capability = get_invest_capability()
+    capability.base_url = f"http://localhost:{SERVICE_PORT}"
+
+    registrar = ServiceRegistrar(
+        gateway_url=GATEWAY_URL,
+        capability=capability,
+        retry_count=5,
+        retry_delay=2.0,
+    )
+
+    registered = await registrar.register()
+    if registered:
+        logger.info("Successfully registered with Gateway")
+    else:
+        logger.warning("Failed to register with Gateway, continuing anyway")
+
     yield
 
+    # Cleanup
     logger.info("Shutting down Invest Service...")
     service = get_invest_service()
     await service.llm_client.close()
+
+    # Unregister from Gateway
+    await registrar.unregister()
 
 
 def create_app() -> FastAPI:

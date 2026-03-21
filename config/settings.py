@@ -117,6 +117,29 @@ class Settings(BaseSettings):
     claude_code_enabled: bool = False
     claude_code_working_dir: str = ""  # Working directory for Claude Code, defaults to current dir
 
+    # Multi-model Configuration
+    multi_model_enabled: bool = True
+    consensus_min_models: int = 3
+    consensus_max_rounds: int = 3
+    consensus_timeout_seconds: int = 60
+
+    # Model routing preferences (should sum to 1.0)
+    routing_quality_weight: float = 0.5
+    routing_latency_weight: float = 0.3
+    routing_cost_weight: float = 0.2
+    routing_exploration_rate: float = 0.1  # 10% of requests explore lower-ranked models
+
+    # Available models on Alibaba Bailian
+    alibaba_available_models: list[str] = [
+        "qwen3.5-plus",
+        "qwen3-max-2026-01-23",
+        "qwen3-coder-next",
+        "qwen3-coder-plus",
+        "glm-5",
+        "kimi-k2.5",
+        "MiniMax-M2.5",
+    ]
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""

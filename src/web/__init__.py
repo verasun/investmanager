@@ -1,7 +1,7 @@
 """Web search module for CHAT mode."""
 
 from src.web.search import WebSearcher, SearchEngine, SearchResult, SearchResponse
-from src.web.intent_detector import SearchIntentDetector
+from src.web.intent_detector import SearchIntentDetector, get_intent_detector
 
 __all__ = [
     "WebSearcher",
@@ -9,6 +9,7 @@ __all__ = [
     "SearchResult",
     "SearchResponse",
     "SearchIntentDetector",
+    "get_intent_detector",
     "get_web_searcher",
 ]
 

@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-21
+
+### Added
+
+#### Multi-Model Scoring and Routing System
+- **Model Registry**: Track capabilities for 7 Alibaba Bailian models
+  - qwen3.5-plus, qwen3-max-2026-01-23, qwen3-coder-next, qwen3-coder-plus
+  - glm-5, kimi-k2.5, MiniMax-M2.5
+  - Capabilities: TEXT, DEEP_THINKING, VISUAL, CODING
+
+- **Intelligent Router**: Quality-first model selection
+  - Weighted scoring: 50% quality, 30% latency, 20% cost
+  - Automatic fallback on model failure
+  - 10% exploration rate for underutilized models
+
+- **Score Manager**: SQLite-based performance tracking
+  - Tables: model_scores, execution_history, user_feedback
+  - Rolling average with decay for recent performance
+  - Support for explicit (1-5 rating) and implicit feedback
+
+- **Multi-Model Provider**: Dynamic model selection per request
+  - Task type routing (text, deep_thinking, visual, coding)
+  - Fallback chain for reliability
+  - Metrics recording for continuous improvement
+
+#### Multi-Model Consensus System
+- **Consensus Coordinator**: Multi-model discussion for complex tasks
+  - Minimum 3 models participating
+  - Roles: Designer, Arbitrator, Reviewer
+
+- **Voting System**: Simple majority with tie-breaker
+  - Maximum 3 discussion rounds
+  - Arbitrator has final decision on ties
+  - Configurable timeout (default: 60s)
+
+#### Service Registration Protocol
+- **Capability Protocol** (`services/capability_protocol.py`):
+  - Standardized data structures for service registration
+  - CapabilityInfo, EndpointInfo, ParamInfo models
+  - Service status and heartbeat support
+
+- **Gateway Enhancements**:
+  - Service registry for dynamic service discovery
+  - LLM-based intent routing
+  - Help system for new users
+
+### Changed
+- LLM service now supports `/handle` endpoint for Gateway routing
+- Removed deprecated `base.py` from providers
+- Updated settings with multi-model configuration options
+
+---
+
 ## [1.2.0] - 2026-03-20
 
 ### Added

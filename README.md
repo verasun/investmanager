@@ -15,7 +15,23 @@
 - **风险管理**: 仓位管理、敞口追踪、风险预警
 - **报告生成**: 日报、回测报告、投资建议
 
-### v1.2 新特性 - 多进程架构
+### v1.3 新特性 - 多模型评分与路由
+
+- **智能模型路由**: 基于任务类型自动选择最佳模型
+  - 7个阿里百炼模型支持 (Qwen, Kimi, GLM, MiniMax)
+  - 质量优先路由策略 (质量50%, 延迟30%, 成本20%)
+  - 自动故障转移和探索机制
+
+- **多模型共识**: 复杂任务多模型讨论
+  - 3+模型并行处理，投票共识
+  - 仲裁者机制打破僵局
+  - 最多3轮讨论
+
+- **反馈系统**: 显式评分 + 隐式行为分析
+  - 用户可评分1-5星
+  - 自动检测重问、追问等行为信号
+
+### v1.2 特性 - 多进程架构
 
 - **Gateway + 能力服务**: 关注点分离，独立扩展
 - **独立 LLM 服务**: 统一的 LLM API 代理
@@ -26,9 +42,21 @@
 
 - **个人化系统**: 用户画像管理、对话记忆、偏好学习
 - **工作模式**: INVEST(投资助手)、CHAT(通用对话)、DEV(开发模式)
-- **多LLM支持**: OpenAI、Anthropic、阿里百炼(Qwen/Kimi系列)
+- **多LLM支持**: OpenAI、Anthropic、阿里百炼(7个模型可选)
 - **综合分析**: 一键执行完整分析流程
 - **智能解析**: 自然语言指令识别，无需精确命令格式
+
+## 支持的模型
+
+| 模型 | 能力 | 说明 |
+|------|------|------|
+| qwen3.5-plus | 文本、深度思考、视觉 | 通用性强 |
+| qwen3-max-2026-01-23 | 文本、深度思考 | 高性能 |
+| qwen3-coder-next | 文本、编程 | 代码优化 |
+| qwen3-coder-plus | 文本、编程 | 代码优化 |
+| glm-5 | 文本、深度思考 | 智谱AI |
+| kimi-k2.5 | 文本、深度思考、视觉 | Moonshot |
+| MiniMax-M2.5 | 文本、深度思考 | MiniMax |
 
 ## 架构
 
@@ -41,6 +69,9 @@
                                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        GATEWAY (:8000)                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Service Registry │ Intent Router │ Help System          │   │
+│  └─────────────────────────────────────────────────────────┘   │
 │  Webhook处理 │ LLM代理 │ 能力路由 (模式判断)                     │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
@@ -50,8 +81,12 @@
 ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
 │ LLM SERVICE   │   │  INVEST       │   │   CHAT        │
 │   :8001       │   │   :8010       │   │   :8011       │
-│ Qwen/Kimi     │   │ 投资分析      │   │ 个人化对话    │
-└───────────────┘   └───────────────┘   └───────────────┘
+│ ┌───────────┐ │   │ 投资分析      │   │ 个人化对话    │
+│ │Multi-Model│ │   └───────────────┘   └───────────────┘
+│ │  Router   │ │
+│ └───────────┘ │
+│ 7个模型可选   │
+└───────────────┘
                             │
                             ▼
                     ┌───────────────┐
@@ -140,11 +175,27 @@ curl http://localhost:8000/health
 investmanager/
 ├── services/                    # 多进程服务
 │   ├── gateway/                 # 网关服务 (:8000)
+│   │   ├── registry.py          # 服务注册中心
+│   │   ├── intent_router.py     # 意图路由
+│   │   └── help_system.py       # 帮助系统
 │   ├── llm/                     # LLM 服务 (:8001)
+│   │   ├── scoring/             # 模型评分系统
+│   │   │   ├── model_registry.py
+│   │   │   ├── score_manager.py
+│   │   │   ├── score_calculator.py
+│   │   │   └── router.py
+│   │   ├── consensus/           # 多模型共识
+│   │   │   ├── coordinator.py
+│   │   │   ├── proposal.py
+│   │   │   └── voting.py
+│   │   └── providers/           # LLM 提供者
+│   │       └── multi_model.py   # 多模型提供者
 │   ├── invest/                  # 投资能力服务 (:8010)
 │   ├── chat/                    # 对话能力服务 (:8011)
 │   ├── dev/                     # 开发能力服务 (:8012)
-│   └── capabilities/            # 能力基础类
+│   ├── capabilities/            # 能力基础类
+│   ├── capability_protocol.py   # 服务注册协议
+│   └── registration.py          # 服务注册工具
 ├── src/
 │   ├── feishu/
 │   │   ├── gateway/             # 消息路由层
@@ -202,7 +253,10 @@ investmanager/
 | `SQLITE_DB_PATH` | 数据库路径 | `$WORK_DIR/data/investmanager.db` |
 | `LLM_PROVIDER` | LLM提供商 | `alibaba_bailian` |
 | `ALIBABA_BAILIAN_API_KEY` | 阿里百炼API密钥 | - |
-| `ALIBABA_BAILIAN_MODEL` | 模型选择 | `kimi-k2.5` |
+| `ALIBABA_BAILIAN_MODEL` | 默认模型 | `kimi-k2.5` |
+| `MULTI_MODEL_ENABLED` | 启用多模型 | `true` |
+| `CONSENSUS_MIN_MODELS` | 共识最少模型数 | `3` |
+| `ROUTING_QUALITY_WEIGHT` | 路由质量权重 | `0.5` |
 | `FEISHU_ENABLED` | 启用飞书 | `true` |
 
 完整配置见 [.env.example](.env.example)

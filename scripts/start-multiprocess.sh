@@ -121,6 +121,21 @@ wait_for_service() {
 }
 
 # ==========================================
+# Start Gateway Service (port 8000) - MUST START FIRST
+# ==========================================
+echo -e "${BLUE}Starting Gateway Service on port 8000...${NC}"
+python -m services.gateway.main \
+    --port 8000 \
+    --llm-url http://localhost:8001 \
+    --invest-url http://localhost:8010 \
+    --chat-url http://localhost:8011 \
+    --dev-url http://localhost:8012 &
+PIDS+=($!)
+SERVICES+=("Gateway Service")
+echo "Gateway Service started (PID: ${PIDS[-1]})"
+wait_for_service 8000 "Gateway Service"
+
+# ==========================================
 # Start LLM Service (port 8001)
 # ==========================================
 echo -e "${BLUE}Starting LLM Service on port 8001...${NC}"
@@ -138,6 +153,7 @@ python -m services.invest.main --port 8010 --gateway-url http://localhost:8000 &
 PIDS+=($!)
 SERVICES+=("Invest Service")
 echo "Invest Service started (PID: ${PIDS[-1]})"
+wait_for_service 8010 "Invest Service"
 
 # ==========================================
 # Start Chat Service (port 8011)
@@ -147,6 +163,7 @@ python -m services.chat.main --port 8011 --gateway-url http://localhost:8000 &
 PIDS+=($!)
 SERVICES+=("Chat Service")
 echo "Chat Service started (PID: ${PIDS[-1]})"
+wait_for_service 8011 "Chat Service"
 
 # ==========================================
 # Start Dev Service (port 8012)
@@ -156,26 +173,7 @@ python -m services.dev.main --port 8012 &
 PIDS+=($!)
 SERVICES+=("Dev Service")
 echo "Dev Service started (PID: ${PIDS[-1]})"
-
-# Wait for all capability services to be ready
-wait_for_service 8010 "Invest Service"
-wait_for_service 8011 "Chat Service"
 wait_for_service 8012 "Dev Service"
-
-# ==========================================
-# Start Gateway Service (port 8000)
-# ==========================================
-echo -e "${BLUE}Starting Gateway Service on port 8000...${NC}"
-python -m services.gateway.main \
-    --port 8000 \
-    --llm-url http://localhost:8001 \
-    --invest-url http://localhost:8010 \
-    --chat-url http://localhost:8011 \
-    --dev-url http://localhost:8012 &
-PIDS+=($!)
-SERVICES+=("Gateway Service")
-echo "Gateway Service started (PID: ${PIDS[-1]})"
-wait_for_service 8000 "Gateway Service"
 
 echo ""
 echo -e "${GREEN}======================================${NC}"
