@@ -140,6 +140,16 @@ class Settings(BaseSettings):
         "MiniMax-M2.5",
     ]
 
+    # Agent Configuration
+    agent_enabled: bool = True
+    agent_max_iterations: int = 10
+    agent_max_retries: int = 2
+    agent_timeout_seconds: int = 300
+
+    # Tool Configuration
+    tool_timeout_seconds: int = 60
+    tool_max_retries: int = 2
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""

@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-21
+
+### Added
+
+#### Agent Service - Full Agentic Capabilities
+- **Tool Registry**: Unified tool management for LLM function calling
+  - 6 built-in tools: web_search, stock_data, analysis, backtest, report
+  - OpenAI and Anthropic tool format support
+  - Automatic parameter validation
+
+- **Planner**: Task decomposition and execution planning
+  - LLM-based intelligent planning with fallback rules
+  - Dependency-aware step ordering
+  - Pattern-based plan reuse
+
+- **Executor**: Plan execution with ReAct loop
+  - Parallel execution of independent steps
+  - Reasoning-Acting-Observation cycle
+  - Context management across steps
+
+- **Reflector**: Result evaluation and retry logic
+  - LLM-based reflection on failures
+  - Automatic retry with corrections
+  - Step-level evaluation
+
+- **Agent Memory**: Task history and pattern learning
+  - SQLite-based persistence
+  - Pattern extraction from successful executions
+  - User task history tracking
+
+- **Autonomous Scheduler**: Scheduled tasks and proactive notifications
+  - Cron, interval, one-time triggers
+  - Price alert triggers (above/below/cross)
+  - News keyword monitoring
+  - Feishu notification integration
+
+#### New Service Port
+- **Agent Service**: :8002
+  - POST /run - Run agent on user request
+  - POST /schedule - Create scheduled task
+  - GET /tasks - List scheduled tasks
+  - GET /history/:user_id - Task history
+
+### Changed
+- Updated settings.py with agent configuration options
+
+---
+
 ## [1.3.0] - 2026-03-21
 
 ### Added
